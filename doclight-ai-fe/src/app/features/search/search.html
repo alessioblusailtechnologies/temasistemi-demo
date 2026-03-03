@@ -1,0 +1,125 @@
+<!-- Search area — AI only -->
+<div class="search-area">
+  <div class="ai-search-section">
+    <div class="ai-search-label">
+      <span class="ai-icon"><i class="fas fa-wand-magic-sparkles"></i> Ricerca AI</span>
+      Descrivi in linguaggio naturale il documento che stai cercando, su qualsiasi tipo documento
+    </div>
+    <div class="ai-input-bar">
+      <i class="fas fa-wand-magic-sparkles sparkle-prefix"></i>
+      <input
+        type="text"
+        [(ngModel)]="query"
+        (keydown)="onKeydown($event)"
+        placeholder='Es: "Fattura del condizionatore di marzo", "Contratto fornitura carta", "DDT settembre"...'
+      />
+      <button class="ai-search-btn" (click)="doSearch()">
+        <i class="fas fa-wand-magic-sparkles"></i> Ricerca
+      </button>
+    </div>
+    <div class="ai-suggestions">
+      @for (s of suggestions; track s.label) {
+        <button class="ai-chip" (click)="fillAndSearch(s.query)">{{ s.label }}</button>
+      }
+    </div>
+  </div>
+</div>
+
+<!-- AI Loading -->
+@if (loading) {
+  <div class="ai-loading visible">
+    <div class="ai-spinner"></div>
+    <div class="ai-loading-text"><i class="fas fa-wand-magic-sparkles"></i> Analisi semantica in corso...</div>
+  </div>
+}
+
+<!-- AI Banner -->
+@if (showBanner) {
+  <div class="ai-banner visible">
+    <i class="fas fa-wand-magic-sparkles banner-icon"></i>
+    <div class="banner-text" [innerHTML]="bannerText"></div>
+    <button class="close-banner" (click)="closeBanner()"><i class="fas fa-times"></i></button>
+  </div>
+}
+
+<!-- AI Filters Applied -->
+@if (displayFilters.length > 0 || semanticQuery) {
+  <div class="ai-filters-bar">
+    @if (semanticQuery) {
+      <div class="ai-interpreted">
+        <i class="fas fa-brain"></i>
+        <span class="interpreted-label">Interpretazione AI:</span>
+        <span class="interpreted-query">{{ semanticQuery }}</span>
+      </div>
+    }
+    @if (displayFilters.length > 0) {
+      <div class="ai-filters-row">
+        <i class="fas fa-filter"></i>
+        <span class="filters-label">Filtri applicati:</span>
+        @for (f of displayFilters; track f.label + f.value) {
+          <span class="filter-chip" [ngClass]="{
+            'filter-must': f.type === 'must',
+            'filter-should': f.type === 'should',
+            'filter-must-not': f.type === 'must_not'
+          }">
+            <span class="filter-chip-label">{{ f.label }}:</span> {{ f.value }}
+          </span>
+        }
+      </div>
+    }
+  </div>
+}
+
+<!-- Results Table -->
+@if (results.length > 0) {
+  <table class="results-table">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Tipo Documento</th>
+        <th>Descrizione <i class="fas fa-sort-alpha-up sort-icon"></i></th>
+        <th class="center">Gerarchia</th>
+        <th class="center">Chiavi e Attributi</th>
+        <th class="center">Memo</th>
+        <th class="center">Allegati</th>
+        <th class="center">Cartelle</th>
+        <th class="center">Visualizza Versione</th>
+        <th class="center">Versioni Precedenti</th>
+        <th>Pdv-Pda</th>
+        @if (showRelevanceColumn) {
+          <th class="center">Rilevanza</th>
+        }
+      </tr>
+    </thead>
+    <tbody>
+      @for (doc of results; track doc.nome_file) {
+        <tr class="ai-match">
+          <td><span class="doc-date">{{ doc.displayDate }}</span></td>
+          <td><span class="doc-type-tag" [ngClass]="doc.typeClass">{{ doc.displayType }}</span></td>
+          <td><a class="doc-link" [href]="getDownloadUrl(doc.nome_file)" target="_blank">{{ doc.nome_file }}</a></td>
+          <td class="center"><i class="fas fa-sitemap tbl-icon"></i></td>
+          <td class="center"><i class="fas fa-key tbl-icon"></i></td>
+          <td class="center"><i class="far fa-comment-dots tbl-icon"></i></td>
+          <td class="center"><i class="fas fa-file tbl-icon-dark"></i></td>
+          <td class="center"><i class="far fa-folder-open tbl-icon"></i></td>
+          <td class="center"><i class="fas fa-copy tbl-icon"></i></td>
+          <td class="version-cell">0</td>
+          <td class="pdv-cell">—</td>
+          @if (showRelevanceColumn) {
+            <td class="center">
+              <span class="relevance-tag"
+                [ngClass]="{
+                  'rel-alta': doc.relevance === 'alta',
+                  'rel-media': doc.relevance === 'media',
+                  'rel-bassa': doc.relevance === 'bassa'
+                }">
+                {{ doc.relevance === 'alta' ? 'Alta' : doc.relevance === 'media' ? 'Media' : 'Bassa' }}
+                ({{ doc.score_percent }}%)
+              </span>
+            </td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
+}

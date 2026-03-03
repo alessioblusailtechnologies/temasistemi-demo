@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TopFiler Cube — Ricerca Semantica</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+  :root {
+    --tf-blue: #1976D2;
+    --tf-blue-dark: #1565C0;
+    --tf-blue-header: #1E88E5;
+    --tf-blue-nav: #2e3439;
+    --tf-blue-nav-bg: #2e3439;
+    --tf-nav-hover: #010e1a;
+    --tf-link: #1976D2;
+    --tf-white: #FFFFFF;
+    --tf-bg: #FAFAFA;
+    --tf-border: #E0E0E0;
+    --tf-border-light: #EEEEEE;
+    --tf-text: #212121;
+    --tf-text-secondary: #757575;
+    --tf-text-muted: #9E9E9E;
+    --tf-row-hover: #E3F2FD;
+    --tf-th-bg: #1E88E5;
+    --tf-btn-blue: #1976D2;
+    --tf-btn-blue-hover: #1565C0;
+    --tf-btn-outline: #1976D2;
+    --tf-radius: 4px;
+    --tf-radius-btn: 20px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--tf-bg);
+    color: var(--tf-text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* ═══ TOP BAR ═══ */
+  .topbar {
+    background: var(--tf-blue-dark);
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+  }
+
+  .topbar-brand {
+    color: var(--tf-white);
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    color: rgba(255,255,255,0.9);
+    font-size: 13px;
+  }
+
+  .topbar-right a {
+    color: rgba(255,255,255,0.9);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+  }
+
+  .topbar-right .user-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ═══ NAVIGATION BAR ═══ */
+  .navbar {
+    background: var(--tf-blue-nav-bg);
+    height: 42px;
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+    gap: 0;
+  }
+
+  .navbar a {
+    color: rgba(255,255,255,0.85);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 400;
+    padding: 0 18px;
+    border-radius: 0;
+    border-right: 1px solid rgba(255,255,255,0.15);
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .navbar a:first-child {
+    border-left: 1px solid rgba(255,255,255,0.15);
+  }
+
+  .navbar a:hover { background: var(--tf-nav-hover); }
+
+  .navbar a.active {
+    background: var(--tf-nav-hover);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .navbar a .chevron {
+    font-size: 10px;
+    opacity: 0.6;
+    margin-left: 2px;
+  }
+
+  /* ═══ MAIN CONTENT ═══ */
+  .main-content {
+    padding: 20px 24px;
+    max-width: 100%;
+  }
+
+  /* ═══ SEARCH AREA ═══ */
+  .search-area {
+    margin-bottom: 22px;
+  }
+
+  /* ═══ AI SEARCH BOX — integrated bar ═══ */
+  .ai-search-section {
+    background: var(--tf-white);
+    border: 1px solid var(--tf-border);
+    border-radius: var(--tf-radius);
+    padding: 16px 18px;
+  }
+
+  .ai-search-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--tf-text-secondary);
+  }
+
+  .ai-search-label .ai-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--tf-btn-blue);
+    background: #E3F2FD;
+    padding: 3px 10px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .ai-input-bar {
+    display: flex;
+    align-items: center;
+    border: 1.5px solid var(--tf-border);
+    border-radius: 24px;
+    background: var(--tf-white);
+    padding: 4px 4px 4px 16px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .ai-input-bar:focus-within {
+    border-color: var(--tf-blue);
+    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+  }
+
+  .ai-input-bar .sparkle-prefix {
+    color: var(--tf-btn-blue);
+    font-size: 16px;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+
+  .ai-input-bar input {
+    flex: 1;
+    font-family: inherit;
+    font-size: 14px;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--tf-text);
+    padding: 8px 0;
+    min-width: 0;
+  }
+
+  .ai-input-bar input::placeholder {
+    color: var(--tf-text-muted);
+    font-style: italic;
+  }
+
+  .ai-input-bar .ai-search-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: 20px;
+    border: none;
+    background: var(--tf-btn-blue);
+    color: var(--tf-white);
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+
+  .ai-input-bar .ai-search-btn:hover {
+    background: var(--tf-btn-blue-hover);
+  }
+
+  .ai-suggestions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .ai-chip {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 5px 12px;
+    background: #E3F2FD;
+    color: var(--tf-blue);
+    border: 1px solid #BBDEFB;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+
+  .ai-chip:hover {
+    background: #BBDEFB;
+  }
+
+  /* ═══ AI LOADING ═══ */
+  .ai-loading {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 0;
+    gap: 12px;
+  }
+
+  .ai-loading.visible { display: flex; }
+
+  .ai-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2.5px solid #BBDEFB;
+    border-top-color: var(--tf-blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .ai-loading-text {
+    font-size: 13px;
+    color: var(--tf-blue);
+    font-weight: 500;
+  }
+
+  /* ═══ AI RESULTS BANNER ═══ */
+  .ai-banner {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    background: #E3F2FD;
+    border: 1px solid #BBDEFB;
+    border-radius: var(--tf-radius);
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--tf-blue-dark);
+  }
+
+  .ai-banner.visible { display: flex; }
+
+  .ai-banner i.banner-icon { font-size: 16px; color: var(--tf-blue); }
+
+  .ai-banner .banner-text { flex: 1; }
+  .ai-banner .banner-text strong { font-weight: 700; }
+
+  .ai-banner .close-banner {
+    background: none;
+    border: none;
+    color: var(--tf-text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    line-height: 1;
+  }
+  .ai-banner .close-banner:hover { color: var(--tf-text-secondary); }
+
+  /* ═══ RESULTS TABLE ═══ */
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    border: 1px solid var(--tf-border);
+    background: var(--tf-white);
+  }
+
+  .results-table thead th {
+    background: var(--tf-th-bg);
+    color: var(--tf-white);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 10px 12px;
+    text-align: left;
+    white-space: nowrap;
+    border-right: 1px solid rgba(255,255,255,0.15);
+    user-select: none;
+  }
+
+  .results-table thead th:last-child { border-right: none; }
+  .results-table thead th.center { text-align: center; }
+
+  .results-table thead th .sort-icon {
+    margin-left: 4px;
+    font-size: 10px;
+    opacity: 0.7;
+  }
+
+  .results-table tbody tr {
+    border-bottom: 1px solid var(--tf-border-light);
+    transition: background 0.1s;
+  }
+
+  .results-table tbody tr:hover { background: var(--tf-row-hover); }
+
+  .results-table tbody td {
+    padding: 8px 12px;
+    vertical-align: middle;
+    color: var(--tf-text);
+    border-right: 1px solid var(--tf-border-light);
+  }
+
+  .results-table tbody td:last-child { border-right: none; }
+  .results-table tbody td.center { text-align: center; }
+
+  .doc-date {
+    font-size: 13px;
+    color: var(--tf-text);
+    white-space: nowrap;
+  }
+
+  .doc-link {
+    color: var(--tf-link);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .doc-link:hover { text-decoration: underline; }
+
+  .doc-type-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+    display: inline-block;
+  }
+
+  .tag-fatture-passive { background: #E3F2FD; color: #1565C0; }
+  .tag-fatture-attive { background: #E8F5E9; color: #2E7D32; }
+  .tag-contratti { background: #FFF3E0; color: #E65100; }
+  .tag-note-credito { background: #FCE4EC; color: #C62828; }
+  .tag-ddt { background: #F3E5F5; color: #6A1B9A; }
+
+  .tbl-icon {
+    color: var(--tf-blue);
+    font-size: 15px;
+    cursor: pointer;
+    opacity: 0.8;
+  }
+  .tbl-icon:hover { opacity: 1; }
+
+  .tbl-icon-dark {
+    color: #616161;
+    font-size: 14px;
+  }
+
+  .pdv-cell {
+    font-size: 13px;
+    color: var(--tf-text);
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  .version-cell {
+    text-align: center;
+    color: var(--tf-text);
+  }
+
+  .relevance-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .rel-alta { background: #C8E6C9; color: #2E7D32; }
+  .rel-media { background: #FFF9C4; color: #F57F17; }
+  .rel-bassa { background: #FFCDD2; color: #C62828; }
+
+  .results-table tbody tr.ai-match { background: #F3F8FE; }
+  .results-table tbody tr.ai-match:hover { background: #E3F2FD; }
+
+  /* ═══ FOOTER ═══ */
+  .footer {
+    padding: 24px 24px 16px;
+    font-size: 12px;
+    color: var(--tf-text-muted);
+  }
+
+  @media (max-width: 1024px) {
+    .navbar { overflow-x: auto; }
+    .page-header { flex-wrap: wrap; gap: 10px; }
+  }
+
+  @media (max-width: 768px) {
+    .main-content { padding: 14px; }
+    .ai-input-row { flex-direction: column; }
+    .results-table { font-size: 12px; }
+    .results-table thead th, .results-table tbody td { padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ TOP BAR ═══ -->
+<div class="topbar">
+  <div class="topbar-brand">TopFiler Cube</div>
+  <div class="topbar-right">
+    <a href="#"><i class="fas fa-question-circle"></i> Help <i class="fas fa-chevron-down" style="font-size:9px;opacity:0.6;"></i></a>
+    <div class="user-info">
+      <i class="fas fa-user"></i>
+      Amministratore XXX (Società: Per Demo) <i class="fas fa-chevron-down" style="font-size:9px;opacity:0.6;"></i>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ NAVIGATION ═══ -->
+<nav class="navbar">
+  <a href="#">Home</a>
+  <a href="#">Gestione Documenti <i class="fas fa-chevron-down chevron"></i></a>
+  <a href="#" class="active">Ricerche <i class="fas fa-chevron-down chevron"></i></a>
+  <a href="#">Amministrazione <i class="fas fa-chevron-down chevron"></i></a>
+  <a href="#">Conservazione <i class="fas fa-chevron-down chevron"></i></a>
+  <a href="#">Protocollo <i class="fas fa-chevron-down chevron"></i></a>
+  <a href="#">Flussi <i class="fas fa-chevron-down chevron"></i></a>
+</nav>
+
+<!-- ═══ MAIN ═══ -->
+<div class="main-content">
+
+  <!-- Search area — AI only -->
+  <div class="search-area">
+    <div class="ai-search-section">
+      <div class="ai-search-label">
+        <span class="ai-icon"><i class="fas fa-wand-magic-sparkles"></i> Ricerca AI</span>
+        Descrivi in linguaggio naturale il documento che stai cercando, su qualsiasi tipo documento
+      </div>
+      <div class="ai-input-bar">
+        <i class="fas fa-wand-magic-sparkles sparkle-prefix"></i>
+        <input type="text" id="aiQuery" placeholder="Es: &quot;Fattura del condizionatore di marzo&quot;, &quot;Contratto fornitura carta&quot;, &quot;DDT settembre&quot;..." />
+        <button class="ai-search-btn" onclick="doAISearch()">
+          <i class="fas fa-wand-magic-sparkles"></i> Ricerca
+        </button>
+      </div>
+      <div class="ai-suggestions">
+        <button class="ai-chip" onclick="fillAndSearch('Fattura del condizionatore di marzo')">Fattura condizionatore</button>
+        <button class="ai-chip" onclick="fillAndSearch('Contratto fornitura carta ufficio')">Contratto fornitura carta</button>
+        <button class="ai-chip" onclick="fillAndSearch('Fatture per rete e luce di settembre')">Fatture rete/luce settembre</button>
+        <button class="ai-chip" onclick="fillAndSearch('Nota di credito Jumbo Market')">Nota credito Jumbo</button>
+        <button class="ai-chip" onclick="fillAndSearch('DDT consegna settembre')">DDT settembre</button>
+        <button class="ai-chip" onclick="fillAndSearch('Tutti i documenti di marzo 2025')">Tutti i doc di marzo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Loading -->
+  <div class="ai-loading" id="aiLoading">
+    <div class="ai-spinner"></div>
+    <div class="ai-loading-text"><i class="fas fa-wand-magic-sparkles"></i> Analisi semantica in corso...</div>
+  </div>
+
+  <!-- AI Banner -->
+  <div class="ai-banner" id="aiBanner">
+    <i class="fas fa-wand-magic-sparkles banner-icon"></i>
+    <div class="banner-text" id="aiBannerText"></div>
+    <button class="close-banner" onclick="closeBanner()"><i class="fas fa-times"></i></button>
+  </div>
+
+  <!-- Results Table -->
+  <table class="results-table" id="resultsTable">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Tipo Documento</th>
+        <th>Descrizione <i class="fas fa-sort-alpha-up sort-icon"></i></th>
+        <th class="center">Gerarchia</th>
+        <th class="center">Chiavi e Attributi</th>
+        <th class="center">Memo</th>
+        <th class="center">Allegati</th>
+        <th class="center">Cartelle</th>
+        <th class="center">Visualizza Versione</th>
+        <th class="center">Versioni Precedenti</th>
+        <th>Pdv-Pda</th>
+        <th class="center" id="thRelevance" style="display:none;">Rilevanza</th>
+      </tr>
+    </thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+</div>
+
+<div class="footer">Release 1.0</div>
+
+<script>
+// ── Document data — multiple types ──
+const allDocs = [
+  // Fatture Passive
+  { date:"07/03/2025", tipo:"Fatture Passive", tipoClass:"tag-fatture-passive", name:"FATTURA CASA DEL CONDIZIONATORE.pdf", pdv:"404-", kw:["condizionatore","casa","climatizzatore","aria","impianto","fattura","passiva","marzo","03","2025"] },
+  { date:"07/03/2025", tipo:"Fatture Passive", tipoClass:"tag-fatture-passive", name:"FATTURA ELECTRONICA.pdf", pdv:"404-", kw:["elettronica","electronica","componenti","elettrici","dispositivi","fattura","passiva","marzo","03","2025"] },
+  { date:"07/03/2025", tipo:"Fatture Passive", tipoClass:"tag-fatture-passive", name:"FATTURA EVERY PAPER.pdf", pdv:"406-417", kw:["carta","paper","cancelleria","ufficio","fogli","fattura","passiva","marzo","03","2025"] },
+  { date:"07/03/2025", tipo:"Fatture Passive", tipoClass:"tag-fatture-passive", name:"FATTURA JUMBO MARKET.pdf", pdv:"406-417", kw:["jumbo","market","supermercato","spesa","alimentari","fattura","passiva","marzo","03","2025"] },
+  { date:"06/03/2025", tipo:"Fatture Passive", tipoClass:"tag-fatture-passive", name:"LA CARTOLAIA.pdf", pdv:"416-", kw:["cartoleria","cartolaia","cancelleria","quaderni","penne","fattura","passiva","marzo","03","2025"] },
+  { date:"23/09/2025", tipo:"Fatture Passive", tipoClass:"tag-fatture-passive", name:"fattura 001 NETWORK PER TUTTI", pdv:"429-...", kw:["network","rete","internet","connessione","fibra","fattura","passiva","settembre","09","2025"] },
+  { date:"23/09/2025", tipo:"Fatture Passive", tipoClass:"tag-fatture-passive", name:"FATTURA LIGHT N. 52/b del 23/09/2025", pdv:"", kw:["luce","light","energia","elettricità","bolletta","fattura","passiva","settembre","09","2025"] },
+  { date:"02/09/2025", tipo:"Fatture Passive", tipoClass:"tag-fatture-passive", name:"fattura risto all dat n. 87/002564 del 02/09/2025", pdv:"", kw:["ristorante","ristorazione","pranzo","cena","risto","fattura","passiva","settembre","09","2025"] },
+  { date:"19/01/2025", tipo:"Fatture Passive", tipoClass:"tag-fatture-passive", name:"FATTURA LINEA PRINT", pdv:"431-", kw:["stampa","print","tipografia","stampante","linea","fattura","passiva","gennaio","01","2025"] },
+  // Fatture Attive
+  { date:"15/03/2025", tipo:"Fatture Attive", tipoClass:"tag-fatture-attive", name:"FATT. ATTIVA N. 2025/031 - Consulenza IT", pdv:"501-", kw:["consulenza","it","informatica","fattura","attiva","marzo","03","2025"] },
+  { date:"10/09/2025", tipo:"Fatture Attive", tipoClass:"tag-fatture-attive", name:"FATT. ATTIVA N. 2025/087 - Servizi Cloud", pdv:"512-", kw:["cloud","servizi","hosting","server","fattura","attiva","settembre","09","2025"] },
+  // Contratti
+  { date:"12/01/2025", tipo:"Contratti", tipoClass:"tag-contratti", name:"CONTRATTO FORNITURA CARTA UFFICIO 2025.pdf", pdv:"300-", kw:["contratto","fornitura","carta","ufficio","paper","cancelleria","gennaio","01","2025"] },
+  { date:"05/03/2025", tipo:"Contratti", tipoClass:"tag-contratti", name:"CONTRATTO MANUTENZIONE IMPIANTI.pdf", pdv:"305-", kw:["contratto","manutenzione","impianti","condizionatore","climatizzazione","marzo","03","2025"] },
+  { date:"20/09/2025", tipo:"Contratti", tipoClass:"tag-contratti", name:"CONTRATTO SERVIZIO NETWORK 2025-2026.pdf", pdv:"310-", kw:["contratto","network","rete","internet","servizio","connessione","settembre","09","2025"] },
+  // Note di Credito
+  { date:"18/03/2025", tipo:"Note di Credito", tipoClass:"tag-note-credito", name:"NOTA CREDITO N. 12 - JUMBO MARKET", pdv:"600-", kw:["nota","credito","jumbo","market","supermercato","reso","marzo","03","2025"] },
+  { date:"28/09/2025", tipo:"Note di Credito", tipoClass:"tag-note-credito", name:"NOTA CREDITO N. 45 - LIGHT ENERGIA", pdv:"612-", kw:["nota","credito","luce","light","energia","conguaglio","settembre","09","2025"] },
+  // DDT
+  { date:"08/03/2025", tipo:"DDT", tipoClass:"tag-ddt", name:"DDT N. 1120 - CONSEGNA MATERIALE UFFICIO", pdv:"700-", kw:["ddt","trasporto","consegna","materiale","ufficio","cancelleria","marzo","03","2025"] },
+  { date:"15/09/2025", tipo:"DDT", tipoClass:"tag-ddt", name:"DDT N. 1385 - CONSEGNA TONER E STAMPANTI", pdv:"715-", kw:["ddt","trasporto","consegna","toner","stampante","print","settembre","09","2025"] },
+];
+
+// Synonym map for semantic matching
+const synonyms = {
+  condizionatore: ["climatizzatore","aria","condizionata","ac","clima","impianto"],
+  luce: ["light","energia","elettricità","bolletta","corrente","enel"],
+  rete: ["network","internet","connessione","fibra","wifi","adsl"],
+  cartoleria: ["cartolaia","cancelleria","quaderni","penne"],
+  supermercato: ["market","jumbo","spesa","alimentari","grocery"],
+  carta: ["paper","every","foglio","fogli","risma","cancelleria"],
+  ristorante: ["risto","pranzo","cena","ristorazione","trattoria"],
+  stampa: ["print","tipografia","stampante","linea","toner"],
+  fattura: ["fatt","fatturazione","bolletta"],
+  contratto: ["fornitura","accordo","convenzione"],
+  nota: ["credito","reso","storno","conguaglio"],
+  ddt: ["trasporto","consegna","spedizione","documento di trasporto"],
+  marzo: ["03/2025","07/03","06/03","08/03","05/03","12/03","15/03","18/03","mar"],
+  settembre: ["09/2025","23/09","02/09","10/09","15/09","20/09","28/09","set"],
+  gennaio: ["01/2025","19/01","12/01","gen"],
+};
+
+function normalize(s) {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+}
+
+function levenshtein(a,b) {
+  const m=a.length, n=b.length;
+  const d=Array.from({length:m+1},(_,i)=>{const r=new Array(n+1);r[0]=i;return r;});
+  for(let j=0;j<=n;j++) d[0][j]=j;
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++)
+    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]!==b[j-1]?1:0));
+  return d[m][n];
+}
+
+function scoreDoc(doc, tokens) {
+  const pool = [...doc.kw, ...doc.name.toLowerCase().split(/[\s./\-]+/), doc.tipo.toLowerCase()];
+  let score = 0;
+  tokens.forEach(tok => {
+    pool.forEach(kw => {
+      if (kw.includes(tok) || tok.includes(kw)) score += 4;
+      else if (tok.length > 3 && levenshtein(tok, kw) <= 2) score += 1;
+    });
+    Object.entries(synonyms).forEach(([key, syns]) => {
+      const tokMatchesKey = tok.includes(key) || key.includes(tok);
+      const tokMatchesSyn = syns.some(s => tok.includes(s) || s.includes(tok));
+      if (tokMatchesKey) {
+        pool.forEach(kw => { if (syns.some(s => kw.includes(s) || s.includes(kw))) score += 3; });
+      }
+      if (tokMatchesSyn) {
+        pool.forEach(kw => { if (kw.includes(key) || key.includes(kw)) score += 3; });
+      }
+    });
+  });
+  return score;
+}
+
+function renderTable(docs, showRelevance) {
+  const tbody = document.getElementById("resultsBody");
+  const thRel = document.getElementById("thRelevance");
+  thRel.style.display = showRelevance ? "table-cell" : "none";
+
+  tbody.innerHTML = docs.map(d => `
+    <tr class="${d.relevance ? 'ai-match' : ''}">
+      <td><span class="doc-date">${d.date}</span></td>
+      <td><span class="doc-type-tag ${d.tipoClass}">${d.tipo}</span></td>
+      <td><a class="doc-link" href="#">${d.name}</a></td>
+      <td class="center"><i class="fas fa-sitemap tbl-icon"></i></td>
+      <td class="center"><i class="fas fa-key tbl-icon"></i></td>
+      <td class="center"><i class="far fa-comment-dots tbl-icon"></i></td>
+      <td class="center"><i class="fas fa-file tbl-icon-dark"></i></td>
+      <td class="center"><i class="far fa-folder-open tbl-icon"></i></td>
+      <td class="center"><i class="fas fa-copy tbl-icon"></i></td>
+      <td class="version-cell">0</td>
+      <td class="pdv-cell">${d.pdv}</td>
+      ${showRelevance ? `<td class="center"><span class="relevance-tag ${d.relevance==='alta'?'rel-alta':d.relevance==='media'?'rel-media':'rel-bassa'}">${d.relevance==='alta'?'Alta':d.relevance==='media'?'Media':'Bassa'}</span></td>` : ''}
+    </tr>
+  `).join("");
+}
+
+function fillAndSearch(text) {
+  document.getElementById("aiQuery").value = text;
+  doAISearch();
+}
+
+function doAISearch() {
+  const raw = document.getElementById("aiQuery").value.trim();
+  if (!raw) { renderTable(allDocs, false); return; }
+
+  const tokens = normalize(raw).split(/\s+/).filter(t => t.length > 1);
+
+  document.getElementById("aiLoading").classList.add("visible");
+  document.getElementById("aiBanner").classList.remove("visible");
+  document.getElementById("resultsBody").innerHTML = "";
+
+  setTimeout(() => {
+    document.getElementById("aiLoading").classList.remove("visible");
+
+    const scored = allDocs.map(doc => ({ ...doc, score: scoreDoc(doc, tokens) }));
+    const maxScore = Math.max(...scored.map(d => d.score), 1);
+
+    const results = scored
+      .filter(d => d.score > 0)
+      .sort((a,b) => b.score - a.score)
+      .map(d => ({
+        ...d,
+        relevance: d.score >= maxScore * 0.65 ? "alta" : d.score >= maxScore * 0.3 ? "media" : "bassa"
+      }));
+
+    const banner = document.getElementById("aiBanner");
+    const highCount = results.filter(r => r.relevance === "alta").length;
+    const typesFound = [...new Set(results.map(r => r.tipo))];
+    banner.classList.add("visible");
+    document.getElementById("aiBannerText").innerHTML = results.length > 0
+      ? `<strong>${results.length} risultati</strong> trovati per "<em>${raw}</em>" — ${highCount} ad alta rilevanza, su ${typesFound.length} ${typesFound.length === 1 ? 'tipo documento' : 'tipi documento'}`
+      : `Nessun risultato per "<em>${raw}</em>". Prova a riformulare la ricerca.`;
+
+    renderTable(results.length > 0 ? results : allDocs, results.length > 0);
+  }, 1000 + Math.random() * 500);
+}
+
+function closeBanner() {
+  document.getElementById("aiBanner").classList.remove("visible");
+}
+
+function clearAll() {
+  document.getElementById("aiQuery").value = "";
+  closeBanner();
+  renderTable(allDocs, false);
+}
+
+document.getElementById("aiQuery").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); doAISearch(); }
+});
+
+// Initial render
+renderTable(allDocs, false);
+</script>
+</body>
+</html>

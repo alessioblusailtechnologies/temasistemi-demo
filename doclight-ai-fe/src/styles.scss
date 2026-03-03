@@ -1,0 +1,35 @@
+@import '@fortawesome/fontawesome-free/css/all.min.css';
+
+:root {
+  --tf-blue: #1976D2;
+  --tf-blue-dark: #1565C0;
+  --tf-blue-header: #1E88E5;
+  --tf-blue-nav: #2e3439;
+  --tf-blue-nav-bg: #2e3439;
+  --tf-nav-hover: #010e1a;
+  --tf-link: #1976D2;
+  --tf-white: #FFFFFF;
+  --tf-bg: #FAFAFA;
+  --tf-border: #E0E0E0;
+  --tf-border-light: #EEEEEE;
+  --tf-text: #212121;
+  --tf-text-secondary: #757575;
+  --tf-text-muted: #9E9E9E;
+  --tf-row-hover: #E3F2FD;
+  --tf-th-bg: #1E88E5;
+  --tf-btn-blue: #1976D2;
+  --tf-btn-blue-hover: #1565C0;
+  --tf-btn-outline: #1976D2;
+  --tf-radius: 4px;
+  --tf-radius-btn: 20px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--tf-bg);
+  color: var(--tf-text);
+  min-height: 100vh;
+  font-size: 14px;
+}
