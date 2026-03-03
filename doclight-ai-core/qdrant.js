@@ -45,19 +45,25 @@ export async function ensureCollection() {
 
         // Indici payload per filtri strutturati
         const payloadIndexes = [
+            // Metadati AI
             { field: 'metadata.tipo_documento', schema: 'keyword' },
-            { field: 'metadata.data_documento', schema: 'keyword' },
+            { field: 'metadata.data_documento', schema: 'datetime' },
+            { field: 'metadata.data_scadenza', schema: 'datetime' },
             { field: 'metadata.importi.totale', schema: 'float' },
             { field: 'metadata.emittente.ragione_sociale', schema: 'text' },
             { field: 'metadata.destinatario.ragione_sociale', schema: 'text' },
             { field: 'metadata.emittente.partita_iva', schema: 'keyword' },
             { field: 'metadata.parole_chiave', schema: 'keyword' },
+            { field: 'metadata.numero_documento', schema: 'keyword' },
+            // Metadati DB Oracle
             { field: 'db.tipo_documento', schema: 'keyword' },
             { field: 'db.societa', schema: 'keyword' },
-            { field: 'db.data_inserimento', schema: 'keyword' },
-            { field: 'db.data_documento', schema: 'keyword' },
+            { field: 'db.data_inserimento', schema: 'datetime' },
+            { field: 'db.data_documento', schema: 'datetime' },
+            { field: 'db.data_riferimento', schema: 'datetime' },
             { field: 'db.utente', schema: 'keyword' },
             { field: 'db.flag_allegato', schema: 'keyword' },
+            { field: 'db.mime_type', schema: 'keyword' },
         ];
 
         for (const idx of payloadIndexes) {
@@ -85,7 +91,7 @@ export async function ensureCollection() {
  * Inserisce/aggiorna un documento nella collection Qdrant.
  * Payload snello: solo nome file, metadati strutturati e profilo semantico.
  */
-export async function upsertDocument({ id, vector, metadata, semanticProfile }) {
+export async function upsertDocument({ id, vector, metadata, semanticProfile, db }) {
     const qc = getClient();
     const pointId = stringToPointId(id);
     try {
@@ -99,6 +105,7 @@ export async function upsertDocument({ id, vector, metadata, semanticProfile }) 
                         nome_file: id,
                         metadata: metadata || {},
                         semantic_profile: semanticProfile || '',
+                        db: db || {},
                     },
                 },
             ],
@@ -121,6 +128,7 @@ export async function upsertDocumentsBatch(documents) {
             nome_file: doc.id,
             metadata: doc.metadata || {},
             semantic_profile: doc.semanticProfile || '',
+            db: doc.db || {},
         },
     }));
 
@@ -144,7 +152,7 @@ export async function searchDocuments(queryVector, filter = null, topK = 20) {
         vector: { name: 'content', vector: queryVector },
         limit: topK,
         with_payload: true,
-        score_threshold: 0.3,
+        score_threshold: 0.15,
     };
 
     if (filter && Object.keys(filter).length > 0) {
@@ -155,7 +163,7 @@ export async function searchDocuments(queryVector, filter = null, topK = 20) {
 
     return results.map(r => ({
         score: r.score,
-        scorePercent: ((r.score + 1) / 2 * 100).toFixed(1),
+        scorePercent: +(r.score * 100).toFixed(1),
         nomeFile: r.payload.nome_file,
         metadata: r.payload.metadata,
         db: r.payload.db,

@@ -86,13 +86,9 @@ async function processDocument(doc) {
     }
     console.log(`  [3/5] Metadati:`, JSON.stringify(structuredMetadata).substring(0, 200));
 
-    // 4. Genera embedding dal profilo semantico
+    // 4. Genera embedding da profilo semantico + testo estratto + keywords
     console.log(`  [4/5] Generazione embedding...`);
-    const textToEmbed = [
-        semanticProfile,
-        structuredMetadata.oggetto || '',
-        (structuredMetadata.parole_chiave || []).join(', '),
-    ].filter(Boolean).join('\n');
+    const textToEmbed = buildEmbeddingText(semanticProfile, extractedText, structuredMetadata);
 
     let embedding;
     try {
@@ -103,14 +99,27 @@ async function processDocument(doc) {
     }
     console.log(`  [4/5] Embedding generato: ${embedding.length} dimensioni`);
 
-    // 5. Salva in Qdrant
+    // 5. Salva in Qdrant (con metadati DB per filtri strutturati)
     console.log(`  [5/5] Salvataggio in Qdrant...`);
+    const dbPayload = {
+        tipo_documento: dbMetadata.TIPO_DOCUMENTO || null,
+        descrizione: dbMetadata.DESCRIZIONE || null,
+        societa: dbMetadata.SOCIETA || null,
+        utente: dbMetadata.UTENTE || null,
+        data_inserimento: formatDate(dbMetadata.DATA_INSERIMENTO),
+        data_documento: formatDate(dbMetadata.DATA_DOCUMENTO),
+        data_riferimento: formatDate(dbMetadata.DATA_RIFERIMENTO),
+        flag_allegato: dbMetadata.FLAG_ALLEGATO || 'N',
+        mime_type: mimeType,
+        doc_size: dbMetadata.DOC_SIZE || null,
+    };
     try {
         await upsertDocument({
             id: docName,
             vector: embedding,
             metadata: structuredMetadata,
             semanticProfile,
+            db: dbPayload,
         });
     } catch (err) {
         console.error(`  [ERRORE] Salvataggio Qdrant fallito:`, err.message);
@@ -212,6 +221,38 @@ function formatDate(d) {
     if (!d) return null;
     if (d instanceof Date) return d.toISOString().split('T')[0];
     return String(d);
+}
+
+/**
+ * Costruisce il testo ottimale per l'embedding.
+ * text-embedding-3-large supporta ~8191 token (~24K chars IT).
+ * Combina: profilo semantico + keywords + testo estratto (troncato).
+ */
+function buildEmbeddingText(semanticProfile, extractedText, metadata) {
+    const parts = [];
+
+    // 1. Profilo semantico — alta densità informativa (sempre incluso intero)
+    if (semanticProfile) parts.push(semanticProfile);
+
+    // 2. Oggetto e keywords — termini esatti per matching
+    if (metadata?.oggetto) parts.push(`Oggetto: ${metadata.oggetto}`);
+    if (metadata?.parole_chiave?.length) parts.push(`Keywords: ${metadata.parole_chiave.join(', ')}`);
+
+    // 3. Emittente e destinatario — nomi aziende, spesso cercati
+    if (metadata?.emittente?.ragione_sociale) parts.push(`Emittente: ${metadata.emittente.ragione_sociale}`);
+    if (metadata?.destinatario?.ragione_sociale) parts.push(`Destinatario: ${metadata.destinatario.ragione_sociale}`);
+
+    // 4. Testo estratto — il contenuto reale del documento (troncato per stare nel limite)
+    const headerLen = parts.join('\n\n').length;
+    const maxExtractedChars = Math.max(20000 - headerLen, 8000);
+    if (extractedText && extractedText.length > 0) {
+        const truncated = extractedText.length > maxExtractedChars
+            ? extractedText.substring(0, maxExtractedChars)
+            : extractedText;
+        parts.push(truncated);
+    }
+
+    return parts.filter(Boolean).join('\n\n');
 }
 
 // ---------------------------------------------------------------------------

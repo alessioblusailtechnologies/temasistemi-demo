@@ -26,8 +26,8 @@ Dato il testo estratto da un documento e i suoi metadati, genera un PROFILO SEMA
 REGOLE:
 - Scrivi in italiano
 - Massimo 3-5 frasi
-- Includi: tipo di documento, oggetto principale, soggetti coinvolti, contesto operativo
-- NON includere date specifiche, importi o codici (quelli vanno nei metadati strutturati)
+- Includi: tipo di documento, oggetto principale, soggetti coinvolti (nomi aziende, persone), contesto operativo
+- NON includere date specifiche, importi esatti o codici numerici (quelli vanno nei metadati strutturati e nei filtri)
 - Usa un linguaggio naturale e descrittivo, adatto a matching semantico
 - Il profilo deve rispondere alla domanda: "Di cosa tratta questo documento?"
 
@@ -110,27 +110,29 @@ export const SYSTEM_PROMPT_SEARCH_QUERY = `Sei un assistente che interpreta quer
 
 COMPITO:
 Data una query in linguaggio naturale, estrai:
-1. "semantic_query": la parte della query da usare per la ricerca semantica (significato del documento)
-2. "filters": filtri strutturati sui metadati
+1. "semantic_query": una riformulazione RICCA della query, descrivendo il tipo di documento cercato con contesto e sinonimi. Questa viene usata per la ricerca vettoriale, quindi deve essere dettagliata e semanticamente espressiva.
+2. "filters": filtri strutturati sui metadati (solo se la query contiene vincoli espliciti)
 
-FILTRI DISPONIBILI:
-- tipo_documento: fattura, contratto, ordine, DDT, nota_credito, preventivo, ecc.
-- data_documento: range di date (gte/lte in formato YYYY-MM-DD)
-- data_inserimento: range di date
-- importo_totale: range numerico (gte/lte)
-- emittente: nome ragione sociale (match parziale)
-- destinatario: nome ragione sociale (match parziale)
-- tipo_doc_doclight: codice tipo documento nel sistema DocLight
-- societa: codice società
-- parole_chiave: array di keyword da cercare
+FILTRI DISPONIBILI (usa i path esatti come "key"):
+- metadata.tipo_documento (keyword): fattura, contratto, ordine, DDT, nota_credito, preventivo, bolla, lettera, circolare, verbale, delibera, altro
+- metadata.data_documento (datetime): range di date con gte/lte in formato "YYYY-MM-DDT00:00:00Z"
+- metadata.data_scadenza (datetime): range di date
+- metadata.importi.totale (float): range numerico (gte/lte)
+- metadata.emittente.ragione_sociale (text): match parziale con "text"
+- metadata.destinatario.ragione_sociale (text): match parziale con "text"
+- metadata.emittente.partita_iva (keyword): match esatto con "value"
+- metadata.numero_documento (keyword): match esatto
+- db.societa (keyword): codice societa DocLight
+- db.tipo_documento (keyword): codice tipo documento DocLight
+- db.utente (keyword): utente inserimento
 
 FORMATO OUTPUT (JSON):
 {
-  "semantic_query": "testo per ricerca vettoriale",
+  "semantic_query": "testo ricco e descrittivo per ricerca vettoriale",
   "filters": {
     "must": [
       {"key": "metadata.tipo_documento", "match": {"value": "fattura"}},
-      {"key": "metadata.data_documento", "range": {"gte": "2024-01-01", "lte": "2024-12-31"}},
+      {"key": "metadata.data_documento", "range": {"gte": "2024-01-01T00:00:00Z", "lte": "2024-12-31T23:59:59Z"}},
       {"key": "metadata.importi.totale", "range": {"gte": 1000}}
     ]
   }
@@ -138,16 +140,14 @@ FORMATO OUTPUT (JSON):
 
 REGOLE:
 - Restituisci SOLO JSON valido
-- La semantic_query deve contenere il significato/contesto della ricerca
-- I filtri devono usare il formato Qdrant filter
-- Se non ci sono filtri strutturati, restituisci "filters": {}
-- Interpreta date relative (es. "ultimo anno" = dal YYYY-01-01 al YYYY-12-31 dell'anno corrente)
+- La semantic_query deve essere RICCA: includi sinonimi, contesto, e termini correlati
+- Le date nei filtri DEVONO essere in formato ISO 8601 completo: "YYYY-MM-DDT00:00:00Z"
+- Se non ci sono filtri strutturati espliciti, restituisci "filters": {}
+- NON generare filtri se non sei sicuro
 
 ESEMPI:
 Query: "fatture superiori a 10000 euro del 2024"
-→ semantic_query: "fattura commerciale"
-→ filters: tipo_documento=fattura, importo>=10000, data 2024
+Output: {"semantic_query": "fattura commerciale documento fiscale importo elevato anno 2024", "filters": {"must": [{"key": "metadata.tipo_documento", "match": {"value": "fattura"}}, {"key": "metadata.importi.totale", "range": {"gte": 10000}}, {"key": "metadata.data_documento", "range": {"gte": "2024-01-01T00:00:00Z", "lte": "2024-12-31T23:59:59Z"}}]}}
 
 Query: "contratti di fornitura con Enel"
-→ semantic_query: "contratto fornitura servizi energia"
-→ filters: tipo_documento=contratto, emittente o destinatario contiene "Enel"`;
+Output: {"semantic_query": "contratto fornitura servizi energia elettrica gas Enel accordo commerciale", "filters": {"must": [{"key": "metadata.tipo_documento", "match": {"value": "contratto"}}], "should": [{"key": "metadata.emittente.ragione_sociale", "match": {"text": "Enel"}}, {"key": "metadata.destinatario.ragione_sociale", "match": {"text": "Enel"}}]}}`;

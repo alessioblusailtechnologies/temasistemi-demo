@@ -68,7 +68,7 @@ export async function extractTextFromFile(fileBuffer, mimeType, fileName) {
 
         try {
             const resp = await ai.responses.create({
-                model: 'gpt-4o',
+                model: 'gpt-4o-mini',
                 temperature: 0.1,
                 instructions: SYSTEM_PROMPT_EXTRACT_TEXT,
                 input: [
@@ -94,7 +94,7 @@ export async function extractTextFromFile(fileBuffer, mimeType, fileName) {
         const dataUrl = `data:${mimeType};base64,${base64}`;
 
         const resp = await ai.chat.completions.create({
-            model: 'gpt-4o',
+            model: 'gpt-4o-mini',
             temperature: 0.1,
             max_tokens: 16000,
             messages: [
@@ -121,7 +121,7 @@ export async function extractTextFromFile(fileBuffer, mimeType, fileName) {
 
         try {
             const resp = await ai.responses.create({
-                model: 'gpt-4o',
+                model: 'gpt-4o-mini',
                 temperature: 0.1,
                 instructions: SYSTEM_PROMPT_EXTRACT_TEXT,
                 input: [
@@ -163,7 +163,7 @@ export async function generateSemanticProfile(extractedText, dbMetadata) {
     ].join('\n');
 
     const resp = await ai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         temperature: 0.3,
         max_tokens: 500,
         messages: [
@@ -228,12 +228,15 @@ export async function extractStructuredMetadata(extractedText, dbMetadata) {
  * @returns {Promise<{semantic_query: string, filters: object}>}
  */
 export async function interpretSearchQuery(query) {
+    const today = new Date().toISOString().split('T')[0];
+    const systemPrompt = SYSTEM_PROMPT_SEARCH_QUERY + `\n\nDATA ODIERNA: ${today}. Usa questa data per risolvere riferimenti temporali relativi (es. "ultimo mese", "quest'anno", "ultimi 3 mesi").`;
+
     const resp = await ai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         temperature: 0.1,
         max_tokens: 1000,
         messages: [
-            { role: 'system', content: SYSTEM_PROMPT_SEARCH_QUERY },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: query },
         ],
         response_format: { type: 'json_object' },

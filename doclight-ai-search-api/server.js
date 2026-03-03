@@ -1,16 +1,20 @@
 import 'dotenv/config';
 import express from 'express';
-import cors from 'cors';
 import { embedText, interpretSearchQuery } from './openai.js';
 import { searchDocuments, getClient } from './qdrant.js';
 import { initPool, getDocumentsMetadataBatch, getAttachmentNames, getDocumentContent } from './oracle-db.js';
 
 const app = express();
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+
+// CORS manuale — più affidabile del middleware cors
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+});
+
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;

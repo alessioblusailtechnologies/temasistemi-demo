@@ -23,7 +23,7 @@ export async function searchDocuments(queryVector, filter = null, topK = 20) {
         vector: { name: 'content', vector: queryVector },
         limit: topK,
         with_payload: true,
-        score_threshold: 0.3,
+        score_threshold: 0.15,
     };
 
     if (filter && Object.keys(filter).length > 0) {
@@ -34,7 +34,7 @@ export async function searchDocuments(queryVector, filter = null, topK = 20) {
 
     return results.map(r => ({
         score: r.score,
-        score_percent: +((r.score + 1) / 2 * 100).toFixed(1),
+        score_percent: +(r.score * 100).toFixed(1),
         nome_file: r.payload.nome_file,
         metadata: r.payload.metadata,
         semantic_profile: r.payload.semantic_profile,

@@ -19,12 +19,15 @@ export async function embedText(text) {
  * Restituisce la parte semantica + filtri strutturati per Qdrant.
  */
 export async function interpretSearchQuery(query) {
+    const today = new Date().toISOString().split('T')[0];
+    const systemPrompt = SYSTEM_PROMPT_SEARCH_QUERY + `\n\nDATA ODIERNA: ${today}. Usa questa data per risolvere riferimenti temporali relativi (es. "ultimo mese", "quest'anno", "ultimi 3 mesi").`;
+
     const resp = await ai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         temperature: 0.1,
         max_tokens: 1000,
         messages: [
-            { role: 'system', content: SYSTEM_PROMPT_SEARCH_QUERY },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: query },
         ],
         response_format: { type: 'json_object' },
