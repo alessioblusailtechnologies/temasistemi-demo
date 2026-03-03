@@ -1,0 +1,17 @@
+{
+  "name": "doclight-ai-core",
+  "version": "1.0.0",
+  "description": "DocLight AI Core - Document ingestion, embedding and semantic search",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "search": "node search.js",
+    "setup-qdrant": "node scripts/qdrant-collection.js"
+  },
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.12.0",
+    "dotenv": "^16.4.7",
+    "oracledb": "^6.7.0",
+    "openai": "^4.77.0"
+  }
+}

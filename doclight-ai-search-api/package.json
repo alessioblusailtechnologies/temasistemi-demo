@@ -1,0 +1,18 @@
+{
+  "name": "doclight-ai-search-api",
+  "version": "1.0.0",
+  "description": "DocLight AI Search API - Ricerca semantica e strutturata su documenti",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.12.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.0",
+    "openai": "^4.77.0",
+    "oracledb": "^6.7.0"
+  }
+}
