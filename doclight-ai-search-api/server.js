@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { embedText, interpretSearchQuery } from './openai.js';
-import { searchDocuments, getClient } from './qdrant.js';
+import { searchDocuments, getClient } from './supabase.js';
 import { initPool, getDocumentsMetadataBatch, getAttachmentNames, getDocumentContent } from './oracle-db.js';
 
 const app = express();
@@ -41,14 +41,14 @@ app.post('/api/search', async (req, res) => {
         // 2. Genera embedding della query semantica
         const queryVector = await embedText(semanticQuery);
 
-        // 3. Costruisci filtro Qdrant
-        const qdrantFilter = buildQdrantFilter(filters);
+        // 3. Costruisci filtro
+        const searchFilter = buildSearchFilter(filters);
 
-        // 4. Cerca in Qdrant
-        const qdrantResults = await searchDocuments(queryVector, qdrantFilter, top_k);
+        // 4. Cerca in Supabase
+        const searchResults = await searchDocuments(queryVector, searchFilter, top_k);
 
         // 5. Arricchisci con metadati da Oracle
-        const docNames = qdrantResults.map(r => r.nome_file);
+        const docNames = searchResults.map(r => r.nome_file);
         let oracleMetadata = [];
         try {
             oracleMetadata = await getDocumentsMetadataBatch(docNames);
@@ -77,7 +77,7 @@ app.post('/api/search', async (req, res) => {
         }
 
         // 6. Componi risultati finali
-        const results = qdrantResults.map(qr => ({
+        const results = searchResults.map(qr => ({
             nome_file: qr.nome_file,
             score: qr.score,
             score_percent: qr.score_percent,
@@ -152,23 +152,23 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Filtri Qdrant
+// Filtri ricerca
 // ---------------------------------------------------------------------------
 
-function buildQdrantFilter(filters) {
+function buildSearchFilter(filters) {
     if (!filters || (!filters.must && !filters.should && !filters.must_not)) {
         return null;
     }
 
-    const qdrantFilter = {};
-    if (filters.must?.length) qdrantFilter.must = filters.must.map(convertCondition);
-    if (filters.should?.length) qdrantFilter.should = filters.should.map(convertCondition);
-    if (filters.must_not?.length) qdrantFilter.must_not = filters.must_not.map(convertCondition);
+    const searchFilter = {};
+    if (filters.must?.length) searchFilter.must = filters.must.map(normalizeCondition);
+    if (filters.should?.length) searchFilter.should = filters.should.map(normalizeCondition);
+    if (filters.must_not?.length) searchFilter.must_not = filters.must_not.map(normalizeCondition);
 
-    return Object.keys(qdrantFilter).length > 0 ? qdrantFilter : null;
+    return Object.keys(searchFilter).length > 0 ? searchFilter : null;
 }
 
-function convertCondition(cond) {
+function normalizeCondition(cond) {
     if (cond.match) return { key: cond.key, match: cond.match };
     if (cond.range) return { key: cond.key, range: cond.range };
     if (cond.match_text) return { key: cond.key, match: { text: cond.match_text } };
@@ -193,7 +193,7 @@ async function start() {
     // Init Oracle pool
     await initPool();
 
-    // Init Qdrant client
+    // Init Supabase client
     getClient();
 
     app.listen(PORT, () => {

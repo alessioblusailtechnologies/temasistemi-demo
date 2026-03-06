@@ -1,17 +1,17 @@
 import 'dotenv/config';
 import { embedText, interpretSearchQuery } from './openai.js';
-import { searchDocuments } from './qdrant.js';
-import { getClient } from './qdrant.js';
+import { searchDocuments } from './supabase.js';
+import { getClient } from './supabase.js';
 
 // ---------------------------------------------------------------------------
 // Ricerca ibrida: semantica + filtri strutturati
 // ---------------------------------------------------------------------------
 
 /**
- * Esegue una ricerca ibrida su Qdrant:
+ * Esegue una ricerca ibrida su Supabase:
  * 1. Interpreta la query con GPT-4o (estrae parte semantica + filtri)
  * 2. Genera embedding della query semantica
- * 3. Cerca in Qdrant con vector + filtri
+ * 3. Cerca in Supabase con vector + filtri
  *
  * @param {string} userQuery  query in linguaggio naturale
  * @param {number} [topK=20]  numero risultati
@@ -32,12 +32,12 @@ export async function hybridSearch(userQuery, topK = 20) {
     console.log('[search] Generazione embedding query...');
     const queryVector = await embedText(semanticQuery);
 
-    // 3. Costruisci filtro Qdrant
-    const qdrantFilter = buildQdrantFilter(filters);
+    // 3. Costruisci filtro Supabase
+    const searchFilter = buildSupabaseFilter(filters);
 
-    // 4. Cerca in Qdrant
-    console.log('[search] Ricerca vettoriale in Qdrant...');
-    const results = await searchDocuments(queryVector, qdrantFilter, topK);
+    // 4. Cerca in Supabase
+    console.log('[search] Ricerca vettoriale in Supabase...');
+    const results = await searchDocuments(queryVector, searchFilter, topK);
 
     console.log(`[search] ${results.length} risultati trovati`);
     return results;
@@ -60,27 +60,27 @@ export async function filteredSearch(query, manualFilters, topK = 20) {
 }
 
 // ---------------------------------------------------------------------------
-// Costruzione filtri Qdrant dal formato AI
+// Costruzione filtri Supabase dal formato AI
 // ---------------------------------------------------------------------------
 
-function buildQdrantFilter(filters) {
+function buildSupabaseFilter(filters) {
     if (!filters || (!filters.must && !filters.should && !filters.must_not)) {
         return null;
     }
 
-    const qdrantFilter = {};
+    const searchFilter = {};
 
     if (filters.must && filters.must.length > 0) {
-        qdrantFilter.must = filters.must.map(convertCondition);
+        searchFilter.must = filters.must.map(convertCondition);
     }
     if (filters.should && filters.should.length > 0) {
-        qdrantFilter.should = filters.should.map(convertCondition);
+        searchFilter.should = filters.should.map(convertCondition);
     }
     if (filters.must_not && filters.must_not.length > 0) {
-        qdrantFilter.must_not = filters.must_not.map(convertCondition);
+        searchFilter.must_not = filters.must_not.map(convertCondition);
     }
 
-    return Object.keys(qdrantFilter).length > 0 ? qdrantFilter : null;
+    return Object.keys(searchFilter).length > 0 ? searchFilter : null;
 }
 
 function convertCondition(cond) {
@@ -144,7 +144,7 @@ async function main() {
         process.exit(0);
     }
 
-    // Verifica connessione Qdrant
+    // Verifica connessione Supabase
     getClient();
 
     const results = await hybridSearch(query, 10);

@@ -1,4 +1,4 @@
-export const SYSTEM_PROMPT_SEARCH_QUERY = `Sei un assistente che interpreta query di ricerca documentale in linguaggio naturale e le traduce in filtri strutturati per Qdrant.
+export const SYSTEM_PROMPT_SEARCH_QUERY = `Sei un assistente che interpreta query di ricerca documentale in linguaggio naturale e le traduce in filtri strutturati per il sistema di ricerca.
 
 COMPITO:
 Data una query in linguaggio naturale, estrai:

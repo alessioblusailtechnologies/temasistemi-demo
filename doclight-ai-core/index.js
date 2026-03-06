@@ -13,9 +13,9 @@ import {
     embedText,
 } from './openai.js';
 import {
-    ensureCollection,
+    ensureTable,
     upsertDocument,
-} from './qdrant.js';
+} from './supabase.js';
 
 // ---------------------------------------------------------------------------
 // Configurazione
@@ -99,8 +99,8 @@ async function processDocument(doc) {
     }
     console.log(`  [4/5] Embedding generato: ${embedding.length} dimensioni`);
 
-    // 5. Salva in Qdrant (con metadati DB per filtri strutturati)
-    console.log(`  [5/5] Salvataggio in Qdrant...`);
+    // 5. Salva in Supabase (con metadati DB per filtri strutturati)
+    console.log(`  [5/5] Salvataggio in Supabase...`);
     const dbPayload = {
         tipo_documento: dbMetadata.TIPO_DOCUMENTO || null,
         descrizione: dbMetadata.DESCRIZIONE || null,
@@ -122,10 +122,10 @@ async function processDocument(doc) {
             db: dbPayload,
         });
     } catch (err) {
-        console.error(`  [ERRORE] Salvataggio Qdrant fallito:`, err.message);
+        console.error(`  [ERRORE] Salvataggio Supabase fallito:`, err.message);
         return null;
     }
-    console.log(`  [5/5] Salvato in Qdrant`);
+    console.log(`  [5/5] Salvato in Supabase`);
 
     // 6. Processa eventuali allegati
     try {
@@ -165,7 +165,7 @@ async function main() {
 
     // Inizializzazione
     await initPool();
-    await ensureCollection();
+    await ensureTable();
 
     // Conta documenti
     const totalInDb = await countDocuments();

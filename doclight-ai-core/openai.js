@@ -21,6 +21,7 @@ export async function embedText(text) {
     const res = await ai.embeddings.create({
         model: 'text-embedding-3-large',
         input: text,
+        dimensions: 2000,
     });
     return res.data[0].embedding;
 }
@@ -223,7 +224,7 @@ export async function extractStructuredMetadata(extractedText, dbMetadata) {
 // ---------------------------------------------------------------------------
 
 /**
- * Interpreta una query in linguaggio naturale e genera filtri Qdrant
+ * Interpreta una query in linguaggio naturale e genera filtri strutturati
  * @param {string} query  query utente
  * @returns {Promise<{semantic_query: string, filters: object}>}
  */

@@ -10,13 +10,14 @@ export async function embedText(text) {
     const res = await ai.embeddings.create({
         model: 'text-embedding-3-large',
         input: text,
+        dimensions: 2000,
     });
     return res.data[0].embedding;
 }
 
 /**
  * Interpreta una query utente in linguaggio naturale.
- * Restituisce la parte semantica + filtri strutturati per Qdrant.
+ * Restituisce la parte semantica + filtri strutturati per la ricerca.
  */
 export async function interpretSearchQuery(query) {
     const today = new Date().toISOString().split('T')[0];
