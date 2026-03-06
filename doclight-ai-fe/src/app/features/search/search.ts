@@ -24,10 +24,9 @@ export class SearchComponent {
   showRelevanceColumn = false;
   bannerText = '';
   results: DisplayResult[] = [];
-  interpretedFilters: any = null;
   semanticQuery = '';
   elapsedMs = 0;
-  displayFilters: { label: string; value: string; type: 'must' | 'should' | 'must_not' }[] = [];
+  selectedDoc: DisplayResult | null = null;
 
   suggestions = [
     { label: 'Fattura condizionatore', query: 'Fattura del condizionatore di marzo' },
@@ -35,7 +34,7 @@ export class SearchComponent {
     { label: 'Fatture rete/luce settembre', query: 'Fatture per rete e luce di settembre' },
     { label: 'Nota credito Jumbo', query: 'Nota di credito Jumbo Market' },
     { label: 'DDT settembre', query: 'DDT consegna settembre' },
-    { label: 'Tutti i doc di marzo', query: 'Tutti i documenti di marzo 2025' },
+    { label: 'Documenti tecnici', query: 'Documenti tecnici' },
   ];
 
   constructor(private searchService: SearchService) {}
@@ -60,19 +59,15 @@ export class SearchComponent {
     this.showBanner = false;
     this.results = [];
     this.showRelevanceColumn = false;
-    this.displayFilters = [];
 
     this.searchService.search({ query: q, top_k: 20 }).subscribe({
       next: (resp: SearchResponse) => {
         this.loading = false;
-        this.semanticQuery = resp.interpreted.semantic_query;
-        this.interpretedFilters = resp.interpreted.filters;
+        this.semanticQuery = resp.semantic_query;
         this.elapsedMs = resp.elapsed_ms;
-        this.displayFilters = this.buildDisplayFilters(resp.interpreted.filters);
 
         this.results = resp.results.map(r => ({
           ...r,
-          score_percent: this.normalizeScore(r.score),
           relevance: this.calcRelevance(r.score),
           displayDate: this.formatDisplayDate(r),
           displayType: this.mapDocType(r),
@@ -103,118 +98,29 @@ export class SearchComponent {
     this.showBanner = false;
   }
 
+  openDetail(doc: DisplayResult): void {
+    this.selectedDoc = doc;
+  }
+
+  closeDetail(): void {
+    this.selectedDoc = null;
+  }
+
   getDownloadUrl(nomeFile: string): string {
     return `/api/document/${encodeURIComponent(nomeFile)}/download`;
   }
 
-  private buildDisplayFilters(filters: any): { label: string; value: string; type: 'must' | 'should' | 'must_not' }[] {
-    if (!filters) return [];
-    const result: { label: string; value: string; type: 'must' | 'should' | 'must_not' }[] = [];
-
-    const parseGroup = (conditions: any[], type: 'must' | 'should' | 'must_not') => {
-      if (!conditions?.length) return;
-      for (const cond of conditions) {
-        const parsed = this.parseCondition(cond);
-        if (parsed) result.push({ ...parsed, type });
-      }
-    };
-
-    parseGroup(filters.must, 'must');
-    parseGroup(filters.should, 'should');
-    parseGroup(filters.must_not, 'must_not');
-
-    return result;
+  formatChunkSimilarity(similarity: number): string {
+    return (similarity * 100).toFixed(1) + '%';
   }
 
-  private parseCondition(cond: any): { label: string; value: string } | null {
-    if (!cond?.key) return null;
-
-    const label = this.filterKeyToLabel(cond.key);
-
-    if (cond.match) {
-      const val = cond.match.value ?? cond.match.text ?? '';
-      return { label, value: this.filterValueToDisplay(cond.key, val) };
-    }
-
-    if (cond.range) {
-      const isDate = this.isDateField(cond.key);
-      const parts: string[] = [];
-      if (cond.range.gte != null) parts.push(`${isDate ? 'dal' : '≥'} ${this.formatFilterValue(cond.key, cond.range.gte)}`);
-      if (cond.range.lte != null) parts.push(`${isDate ? 'al' : '≤'} ${this.formatFilterValue(cond.key, cond.range.lte)}`);
-      if (cond.range.gt != null) parts.push(`> ${this.formatFilterValue(cond.key, cond.range.gt)}`);
-      if (cond.range.lt != null) parts.push(`< ${this.formatFilterValue(cond.key, cond.range.lt)}`);
-      return { label, value: parts.join(' ') };
-    }
-
-    return null;
+  formatFileSize(bytes: number | undefined): string {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
-  private filterKeyToLabel(key: string): string {
-    const map: Record<string, string> = {
-      'metadata.tipo_documento': 'Tipo',
-      'metadata.data_documento': 'Data documento',
-      'metadata.data_scadenza': 'Scadenza',
-      'metadata.importi.totale': 'Importo',
-      'metadata.emittente.ragione_sociale': 'Emittente',
-      'metadata.destinatario.ragione_sociale': 'Destinatario',
-      'metadata.emittente.partita_iva': 'P.IVA emittente',
-      'metadata.numero_documento': 'N. documento',
-      'metadata.parole_chiave': 'Parole chiave',
-      'db.tipo_documento': 'Tipo (DB)',
-      'db.societa': 'Società',
-      'db.utente': 'Utente',
-    };
-    return map[key] || key.split('.').pop() || key;
-  }
-
-  private filterValueToDisplay(key: string, val: any): string {
-    if (key === 'metadata.tipo_documento') {
-      const map: Record<string, string> = {
-        fattura: 'Fattura', contratto: 'Contratto', ordine: 'Ordine',
-        DDT: 'DDT', nota_credito: 'Nota di credito', preventivo: 'Preventivo',
-        bolla: 'Bolla', lettera: 'Lettera', circolare: 'Circolare',
-      };
-      return map[val] || String(val);
-    }
-    if (key === 'metadata.importi.totale') {
-      return Number(val).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + ' €';
-    }
-    return String(val);
-  }
-
-  private isDateField(key: string): boolean {
-    const field = key.split('.').pop() || '';
-    return ['data_documento', 'data_scadenza', 'data_inserimento', 'data_riferimento'].includes(field);
-  }
-
-  private formatFilterValue(key: string, val: any): string {
-    if (this.isDateField(key)) {
-      try {
-        const d = new Date(val);
-        if (!isNaN(d.getTime())) return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      } catch { /* fall through */ }
-    }
-    const field = key.split('.').pop() || '';
-    if (field === 'totale' || key.includes('importi')) {
-      return Number(val).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + ' €';
-    }
-    return String(val);
-  }
-
-  /**
-   * Normalizza il cosine similarity [0.15–0.85] in una scala utente [0–100%].
-   * text-embedding-3-large raramente supera 0.85 o scende sotto 0.15.
-   */
-  private normalizeScore(score: number): number {
-    const MIN = 0.15; // score_threshold di Qdrant
-    const MAX = 0.80; // massimo realistico per embedding di testo
-    const normalized = Math.round(((score - MIN) / (MAX - MIN)) * 100);
-    return Math.max(0, Math.min(100, normalized));
-  }
-
-  /**
-   * Soglie assolute basate sul cosine similarity reale.
-   */
   private calcRelevance(score: number): 'alta' | 'media' | 'bassa' {
     if (score >= 0.55) return 'alta';
     if (score >= 0.35) return 'media';
@@ -234,17 +140,27 @@ export class SearchComponent {
   }
 
   private mapDocType(r: SearchResult): string {
-    const tipo = (r.metadata_ai?.tipo_documento || r.metadata_db?.tipo_documento || 'altro').toLowerCase();
+    const tipoAI = r.metadata_ai?.tipo_documento;
+    const tipoDB = r.metadata_db?.tipo_documento;
+    const tipo = (tipoAI || tipoDB || 'altro').toLowerCase();
     const map: Record<string, string> = {
-      fattura: 'Fatture Passive',
-      fattura_attiva: 'Fatture Attive',
-      contratto: 'Contratti',
-      nota_credito: 'Note di Credito',
+      fattura: 'Fattura',
+      fattura_attiva: 'Fattura Attiva',
+      contratto: 'Contratto',
+      nota_credito: 'Nota di Credito',
       ddt: 'DDT',
-      ordine: 'Ordini',
-      preventivo: 'Preventivi',
+      ordine: 'Ordine',
+      preventivo: 'Preventivo',
+      normativa: 'Normativa',
+      rapporto_intervento: 'Rapporto Intervento',
+      documento_tecnico: 'Doc. Tecnico',
+      modello: 'Modello',
+      altro: 'Altro',
     };
-    return map[tipo] || tipo.charAt(0).toUpperCase() + tipo.slice(1);
+    if (!tipoAI && tipoDB) {
+      return tipoDB;
+    }
+    return map[tipo] || tipo.charAt(0).toUpperCase() + tipo.slice(1).replace(/_/g, ' ');
   }
 
   private mapTypeClass(r: SearchResult): string {
@@ -255,7 +171,11 @@ export class SearchComponent {
       contratto: 'tag-contratti',
       nota_credito: 'tag-note-credito',
       ddt: 'tag-ddt',
+      normativa: 'tag-normativa',
+      rapporto_intervento: 'tag-doc-tecnico',
+      documento_tecnico: 'tag-doc-tecnico',
+      modello: 'tag-doc-tecnico',
     };
-    return map[tipo] || 'tag-fatture-passive';
+    return map[tipo] || 'tag-altro';
   }
 }

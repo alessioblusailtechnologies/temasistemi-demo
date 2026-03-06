@@ -6,7 +6,6 @@ import { initPool, getDocumentsMetadataBatch, getAttachmentNames, getDocumentCon
 
 const app = express();
 
-// CORS manuale — più affidabile del middleware cors
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -33,21 +32,17 @@ app.post('/api/search', async (req, res) => {
             return res.status(400).json({ error: 'Il campo "query" è obbligatorio.' });
         }
 
-        // 1. Interpreta la query con AI → parte semantica + filtri
+        // 1. Arricchisci semanticamente la query
         const interpreted = await interpretSearchQuery(query.trim());
         const semanticQuery = interpreted.semantic_query || query;
-        const filters = interpreted.filters || {};
 
-        // 2. Genera embedding della query semantica
+        // 2. Genera embedding della query arricchita
         const queryVector = await embedText(semanticQuery);
 
-        // 3. Costruisci filtro
-        const searchFilter = buildSearchFilter(filters);
+        // 3. Ricerca vettoriale sui chunk
+        const searchResults = await searchDocuments(queryVector, top_k);
 
-        // 4. Cerca in Supabase
-        const searchResults = await searchDocuments(queryVector, searchFilter, top_k);
-
-        // 5. Arricchisci con metadati da Oracle
+        // 4. Arricchisci con metadati da Oracle
         const docNames = searchResults.map(r => r.nome_file);
         let oracleMetadata = [];
         try {
@@ -56,7 +51,6 @@ app.post('/api/search', async (req, res) => {
             console.warn('[search] Oracle metadata fetch fallito:', err.message);
         }
 
-        // Mappa Oracle metadata per nome file
         const oracleMap = new Map();
         for (const row of oracleMetadata) {
             oracleMap.set(row.NOME_FILE, {
@@ -76,27 +70,23 @@ app.post('/api/search', async (req, res) => {
             });
         }
 
-        // 6. Componi risultati finali
-        const results = searchResults.map(qr => ({
-            nome_file: qr.nome_file,
-            score: qr.score,
-            score_percent: qr.score_percent,
-            semantic_profile: qr.semantic_profile,
-            metadata_ai: qr.metadata,
-            metadata_db: oracleMap.get(qr.nome_file) || null,
+        // 5. Componi risultati
+        const results = searchResults.map(r => ({
+            nome_file: r.nome_file,
+            score: r.score,
+            score_percent: r.score_percent,
+            semantic_profile: r.semantic_profile,
+            metadata_ai: r.metadata,
+            metadata_db: oracleMap.get(r.nome_file) || null,
+            matching_chunks: r.matching_chunks,
         }));
-
-        const elapsed = Date.now() - startTime;
 
         return res.json({
             query: query.trim(),
-            interpreted: {
-                semantic_query: semanticQuery,
-                filters,
-            },
+            semantic_query: semanticQuery,
             results,
             total: results.length,
-            elapsed_ms: elapsed,
+            elapsed_ms: Date.now() - startTime,
         });
 
     } catch (err) {
@@ -106,22 +96,18 @@ app.post('/api/search', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/document/:name/download  — scarica/apri il file nel browser
+// GET /api/document/:name/download
 // ---------------------------------------------------------------------------
 
 app.get('/api/document/:name/download', async (req, res) => {
     try {
         const doc = await getDocumentContent(req.params.name);
-
         if (!doc || !doc.content) {
             return res.status(404).json({ error: 'Documento non trovato o contenuto vuoto.' });
         }
-
-        // Content-Disposition: inline → il browser prova ad aprirlo; attachment → forza il download
         res.setHeader('Content-Type', doc.mimeType);
         res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.name)}"`);
         res.setHeader('Content-Length', doc.content.length);
-
         return res.send(doc.content);
     } catch (err) {
         console.error('[download] Errore:', err);
@@ -152,30 +138,6 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Filtri ricerca
-// ---------------------------------------------------------------------------
-
-function buildSearchFilter(filters) {
-    if (!filters || (!filters.must && !filters.should && !filters.must_not)) {
-        return null;
-    }
-
-    const searchFilter = {};
-    if (filters.must?.length) searchFilter.must = filters.must.map(normalizeCondition);
-    if (filters.should?.length) searchFilter.should = filters.should.map(normalizeCondition);
-    if (filters.must_not?.length) searchFilter.must_not = filters.must_not.map(normalizeCondition);
-
-    return Object.keys(searchFilter).length > 0 ? searchFilter : null;
-}
-
-function normalizeCondition(cond) {
-    if (cond.match) return { key: cond.key, match: cond.match };
-    if (cond.range) return { key: cond.key, range: cond.range };
-    if (cond.match_text) return { key: cond.key, match: { text: cond.match_text } };
-    return cond;
-}
-
-// ---------------------------------------------------------------------------
 // Utils
 // ---------------------------------------------------------------------------
 
@@ -190,15 +152,12 @@ function formatDate(d) {
 // ---------------------------------------------------------------------------
 
 async function start() {
-    // Init Oracle pool
     await initPool();
-
-    // Init Supabase client
     getClient();
 
     app.listen(PORT, () => {
-        console.log(`DocLight AI Search API avviata su http://localhost:${PORT}`);
-        console.log(`  POST /api/search          { "query": "testo libero", "top_k": 20 }`);
+        console.log(`DocLight AI Search API su http://localhost:${PORT}`);
+        console.log(`  POST /api/search   { "query": "testo", "top_k": 20 }`);
         console.log(`  GET  /api/document/:name/download`);
         console.log(`  GET  /api/document/:name/attachments`);
         console.log(`  GET  /api/health`);
@@ -206,6 +165,6 @@ async function start() {
 }
 
 start().catch(err => {
-    console.error('Errore avvio server:', err);
+    console.error('Errore avvio:', err);
     process.exit(1);
 });

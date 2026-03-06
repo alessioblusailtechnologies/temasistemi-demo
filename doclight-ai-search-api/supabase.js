@@ -12,18 +12,16 @@ export function getClient() {
 }
 
 /**
- * Ricerca vettoriale con filtri opzionali.
- * Restituisce risultati con score e payload (nome_file, metadata, semantic_profile).
+ * Ricerca vettoriale pura sui chunk.
+ * Raggruppa i risultati per documento e arricchisce con metadati.
  */
-export async function searchDocuments(queryVector, filter = null, topK = 20) {
+export async function searchDocuments(queryVector, topK = 20) {
     const sb = getClient();
 
-    const fetchCount = filter ? Math.min(topK * 5, 200) : topK;
-
-    const { data, error } = await sb.rpc('match_documents', {
+    const { data, error } = await sb.rpc('match_chunks', {
         query_embedding: JSON.stringify(queryVector),
         match_threshold: 0.15,
-        match_count: fetchCount,
+        match_count: Math.min(topK * 4, 200),
     });
 
     if (error) {
@@ -31,72 +29,58 @@ export async function searchDocuments(queryVector, filter = null, topK = 20) {
         throw error;
     }
 
-    let results = data || [];
+    const results = data || [];
 
-    // Applica filtri in JavaScript
-    if (filter && Object.keys(filter).length > 0) {
-        results = applyFilters(results, filter);
+    // Raggruppa per documento
+    const docMap = new Map();
+    for (const chunk of results) {
+        if (!docMap.has(chunk.nome_file)) {
+            docMap.set(chunk.nome_file, {
+                nome_file: chunk.nome_file,
+                bestSimilarity: chunk.similarity,
+                chunks: [],
+            });
+        }
+        const doc = docMap.get(chunk.nome_file);
+        if (chunk.similarity > doc.bestSimilarity) {
+            doc.bestSimilarity = chunk.similarity;
+        }
+        doc.chunks.push({
+            type: chunk.chunk_type,
+            summary: chunk.chunk_summary,
+            text: chunk.chunk_text,
+            similarity: chunk.similarity,
+        });
     }
 
-    return results.slice(0, topK).map(r => ({
-        score: r.similarity,
-        score_percent: +(r.similarity * 100).toFixed(1),
-        nome_file: r.nome_file,
-        metadata: r.metadata,
-        semantic_profile: r.semantic_profile,
-    }));
-}
+    // Recupera metadati documento
+    const docNames = [...docMap.keys()];
+    if (docNames.length > 0) {
+        const { data: docs } = await sb
+            .from('doclight_documents')
+            .select('nome_file, metadata, semantic_profile')
+            .in('nome_file', docNames);
 
-// ---------------------------------------------------------------------------
-// Filtri (must/should/must_not → JavaScript)
-// ---------------------------------------------------------------------------
-
-function applyFilters(results, filter) {
-    return results.filter(doc => {
-        if (filter.must?.length) {
-            if (!filter.must.every(c => matchCondition(doc, c))) return false;
+        if (docs) {
+            for (const doc of docs) {
+                const entry = docMap.get(doc.nome_file);
+                if (entry) {
+                    entry.metadata = doc.metadata || {};
+                    entry.semantic_profile = doc.semantic_profile || '';
+                }
+            }
         }
-        if (filter.must_not?.length) {
-            if (filter.must_not.some(c => matchCondition(doc, c))) return false;
-        }
-        if (filter.should?.length) {
-            if (!filter.should.some(c => matchCondition(doc, c))) return false;
-        }
-        return true;
-    });
-}
-
-function matchCondition(doc, condition) {
-    const value = getNestedValue(doc, condition.key);
-
-    if (condition.match?.value !== undefined) {
-        if (value == null) return false;
-        return String(value).toLowerCase() === String(condition.match.value).toLowerCase();
     }
 
-    if (condition.match?.text !== undefined) {
-        if (value == null) return false;
-        return String(value).toLowerCase().includes(String(condition.match.text).toLowerCase());
-    }
-
-    if (condition.range) {
-        if (value == null) return false;
-        const numVal = parseFloat(value);
-        if (!isNaN(numVal)) {
-            if (condition.range.gte !== undefined && numVal < parseFloat(condition.range.gte)) return false;
-            if (condition.range.lte !== undefined && numVal > parseFloat(condition.range.lte)) return false;
-        } else {
-            const dateVal = new Date(value);
-            if (isNaN(dateVal.getTime())) return false;
-            if (condition.range.gte && dateVal < new Date(condition.range.gte)) return false;
-            if (condition.range.lte && dateVal > new Date(condition.range.lte)) return false;
-        }
-        return true;
-    }
-
-    return true;
-}
-
-function getNestedValue(obj, path) {
-    return path.split('.').reduce((o, k) => o?.[k], obj);
+    return [...docMap.values()]
+        .sort((a, b) => b.bestSimilarity - a.bestSimilarity)
+        .slice(0, topK)
+        .map(r => ({
+            nome_file: r.nome_file,
+            score: r.bestSimilarity,
+            score_percent: +(r.bestSimilarity * 100).toFixed(1),
+            metadata: r.metadata || {},
+            semantic_profile: r.semantic_profile || '',
+            matching_chunks: r.chunks.slice(0, 3),
+        }));
 }

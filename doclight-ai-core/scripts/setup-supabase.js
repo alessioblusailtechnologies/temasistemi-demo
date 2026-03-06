@@ -1,126 +1,98 @@
 import 'dotenv/config';
 import { getClient } from '../supabase.js';
 
-/**
- * Script per creare la tabella e la funzione di ricerca su Supabase.
- *
- * PREREQUISITI:
- * 1. Abilitare l'estensione pgvector nel progetto Supabase:
- *    Dashboard → Database → Extensions → cerca "vector" → Enable
- *
- * 2. Eseguire questo script:
- *    npm run setup-supabase
- *
- * OPPURE eseguire manualmente il SQL sotto nel SQL Editor di Supabase.
- */
-
 const SETUP_SQL = `
--- 1. Abilita estensione pgvector (se non già attiva)
+-- 1. Estensione pgvector
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- 2. Crea tabella documenti
-CREATE TABLE IF NOT EXISTS doclight_documents (
+-- 2. Tabella documenti (solo metadati, no embedding)
+DROP TABLE IF EXISTS doclight_chunks;
+DROP TABLE IF EXISTS doclight_documents;
+
+CREATE TABLE doclight_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     nome_file TEXT UNIQUE NOT NULL,
-    embedding vector(2000),
     metadata JSONB DEFAULT '{}'::jsonb,
     semantic_profile TEXT DEFAULT '',
-    db JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Crea indice HNSW per ricerca vettoriale (cosine similarity)
-CREATE INDEX IF NOT EXISTS idx_doclight_embedding
-    ON doclight_documents
-    USING hnsw (embedding vector_cosine_ops);
-
--- 4. Crea indici GIN per filtri JSONB
-CREATE INDEX IF NOT EXISTS idx_doclight_metadata
-    ON doclight_documents USING gin (metadata);
-
-CREATE INDEX IF NOT EXISTS idx_doclight_db
-    ON doclight_documents USING gin (db);
-
--- 5. Indice sul nome file
-CREATE INDEX IF NOT EXISTS idx_doclight_nome_file
-    ON doclight_documents (nome_file);
-
--- 6. Disabilita RLS per permettere accesso con anon key
---    (oppure crea policy personalizzate se serve controllo accessi)
+CREATE INDEX idx_doc_nome_file ON doclight_documents (nome_file);
 ALTER TABLE doclight_documents DISABLE ROW LEVEL SECURITY;
 
--- 7. Funzione di ricerca per similarità vettoriale
-CREATE OR REPLACE FUNCTION match_documents(
-    query_embedding vector(2000),
+-- 3. Tabella chunk (embedding 3072 dims, scansione sequenziale per massima precisione)
+CREATE TABLE doclight_chunks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nome_file TEXT NOT NULL,
+    chunk_index INT NOT NULL,
+    chunk_type TEXT DEFAULT 'contenuto',
+    chunk_summary TEXT DEFAULT '',
+    chunk_text TEXT NOT NULL,
+    embedding vector(3072),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(nome_file, chunk_index)
+);
+
+CREATE INDEX idx_chunks_nome_file ON doclight_chunks (nome_file);
+ALTER TABLE doclight_chunks DISABLE ROW LEVEL SECURITY;
+
+-- NOTA: Non usiamo indice HNSW (limite 2000 dims su Supabase).
+-- La scansione sequenziale dà risultati ESATTI (non approssimati).
+-- Per dataset > 50K chunk, aggiungere indice IVFFlat:
+-- CREATE INDEX idx_chunks_embedding ON doclight_chunks
+--     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- 4. Funzione di ricerca vettoriale
+CREATE OR REPLACE FUNCTION match_chunks(
+    query_embedding vector(3072),
     match_threshold float DEFAULT 0.15,
-    match_count int DEFAULT 20
+    match_count int DEFAULT 50
 )
 RETURNS TABLE (
-    id uuid,
+    chunk_id uuid,
     nome_file text,
-    metadata jsonb,
-    semantic_profile text,
-    db jsonb,
+    chunk_type text,
+    chunk_summary text,
+    chunk_text text,
     similarity float
 )
 LANGUAGE sql STABLE
 AS $$
     SELECT
-        d.id,
-        d.nome_file,
-        d.metadata,
-        d.semantic_profile,
-        d.db,
-        1 - (d.embedding <=> query_embedding) AS similarity
-    FROM doclight_documents d
-    WHERE 1 - (d.embedding <=> query_embedding) > match_threshold
-    ORDER BY d.embedding <=> query_embedding
+        id AS chunk_id,
+        nome_file,
+        chunk_type,
+        chunk_summary,
+        chunk_text,
+        1 - (embedding <=> query_embedding) AS similarity
+    FROM doclight_chunks
+    WHERE 1 - (embedding <=> query_embedding) > match_threshold
+    ORDER BY embedding <=> query_embedding
     LIMIT match_count;
 $$;
 `;
 
 async function main() {
     console.log('=== Setup Supabase per DocLight AI ===');
-    console.log(`URL: ${process.env.SUPABASE_URL}`);
-    console.log('');
+    console.log(`URL: ${process.env.SUPABASE_URL}\n`);
 
-    const sb = getClient();
-
-    // Esegui il SQL di setup tramite la funzione rpc o direttamente
-    // Nota: Supabase non permette SQL arbitrario via client JS.
-    // Il SQL va eseguito nel SQL Editor della dashboard Supabase.
-
-    console.log('IMPORTANTE: Esegui il seguente SQL nel SQL Editor di Supabase Dashboard:');
-    console.log('');
+    console.log('Esegui questo SQL nel SQL Editor di Supabase:\n');
     console.log('─'.repeat(70));
     console.log(SETUP_SQL);
     console.log('─'.repeat(70));
-    console.log('');
 
-    // Verifica se la tabella esiste già
-    const { data, error } = await sb
-        .from('doclight_documents')
-        .select('id')
-        .limit(1);
+    const sb = getClient();
 
-    if (error) {
-        console.log('La tabella "doclight_documents" NON esiste ancora.');
-        console.log('Copia ed esegui il SQL sopra nel SQL Editor di Supabase.');
+    const { error: e1 } = await sb.from('doclight_documents').select('id').limit(1);
+    const { error: e2 } = await sb.from('doclight_chunks').select('id').limit(1);
+
+    if (e1 || e2) {
+        console.log('\nTabelle NON trovate. Esegui il SQL sopra.');
     } else {
-        console.log('La tabella "doclight_documents" esiste già.');
-
-        // Conta documenti
-        const { count } = await sb
-            .from('doclight_documents')
-            .select('*', { count: 'exact', head: true });
-
-        console.log(`Documenti presenti: ${count || 0}`);
+        const { count: docCount } = await sb.from('doclight_documents').select('*', { count: 'exact', head: true });
+        const { count: chunkCount } = await sb.from('doclight_chunks').select('*', { count: 'exact', head: true });
+        console.log(`\nDocumenti: ${docCount || 0}, Chunk: ${chunkCount || 0}`);
     }
-
-    console.log('\nSetup completato.');
 }
 
-main().catch(err => {
-    console.error('Errore:', err);
-    process.exit(1);
-});
+main().catch(err => { console.error('Errore:', err); process.exit(1); });

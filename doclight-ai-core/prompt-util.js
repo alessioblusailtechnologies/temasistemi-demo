@@ -1,6 +1,5 @@
 /**
  * Prompt per l'estrazione del testo dal contenuto del documento.
- * Usato con GPT-4o vision per PDF/immagini, o come fallback testuale.
  */
 export const SYSTEM_PROMPT_EXTRACT_TEXT = `Sei un assistente specializzato nell'estrazione di testo da documenti aziendali.
 
@@ -16,138 +15,164 @@ REGOLE:
 - Lingua: mantieni la lingua originale del documento`;
 
 /**
- * Prompt per la generazione del profilo semantico (breve, ottimizzato per embedding)
+ * Prompt unificato per analisi documento: tipo, metadati, profilo semantico e chunk.
+ * Una sola chiamata LLM per tutto.
  */
-export const SYSTEM_PROMPT_SEMANTIC_PROFILE = `Sei un assistente specializzato nella sintesi semantica di documenti aziendali.
+export const SYSTEM_PROMPT_ANALYZE_DOCUMENT = `Sei un analista documentale AI specializzato in documenti aziendali italiani.
 
 COMPITO:
-Dato il testo estratto da un documento e i suoi metadati, genera un PROFILO SEMANTICO BREVE che catturi l'essenza del documento in modo ottimale per la ricerca semantica.
+Dato il testo estratto da un documento, devi produrre in un'UNICA risposta JSON:
+1. Il tipo di documento identificato
+2. Un profilo semantico breve (2-4 frasi)
+3. I metadati strutturati estratti
+4. I chunk semantici ottimizzati per la ricerca vettoriale
 
-REGOLE:
-- Scrivi in italiano
-- Massimo 3-5 frasi
-- Includi: tipo di documento, oggetto principale, soggetti coinvolti (nomi aziende, persone), contesto operativo
-- NON includere date specifiche, importi esatti o codici numerici (quelli vanno nei metadati strutturati e nei filtri)
-- Usa un linguaggio naturale e descrittivo, adatto a matching semantico
-- Il profilo deve rispondere alla domanda: "Di cosa tratta questo documento?"
+CHUNK - COSA SONO E PERCHÉ:
+I chunk sono sezioni del documento trasformate in unità autonome di significato.
+Servono per la ricerca semantica: quando un utente cerca "manutenzione condizionatore",
+il chunk che descrive quel servizio deve matchare con alta precisione.
+Ogni chunk deve avere senso da solo, senza bisogno di leggere il resto del documento.
 
-FORMATO OUTPUT:
-Testo libero, 3-5 frasi.`;
+COME CREARE I CHUNK PER TIPO DOCUMENTO:
 
-/**
- * Prompt per l'estrazione dei metadati strutturati (non semantici)
- */
-export const SYSTEM_PROMPT_EXTRACT_METADATA = `Sei un assistente specializzato nell'estrazione di metadati strutturati da documenti aziendali italiani.
+FATTURA / NOTA_CREDITO:
+- Un chunk con i dati identificativi completi (numero, data, emittente con P.IVA e indirizzo, destinatario)
+- Un chunk PER OGNI servizio o prodotto fatturato — descrivi in modo ricco e dettagliato:
+  cosa viene fatturato, in quale contesto, quantità, prezzo, e qualsiasi dettaglio utile alla ricerca
+- Un chunk per totali, IVA, condizioni e modalità di pagamento
+- Se presenti, un chunk per riferimenti (ordini, contratti, CIG/CUP)
 
-COMPITO:
-Dato il testo di un documento, estrai tutti i metadati strutturati rilevanti in formato JSON.
+CONTRATTO:
+- Un chunk per parti contraenti, oggetto e premesse
+- Un chunk per ogni articolo o clausola significativa (mantieni il numero)
+- Un chunk per corrispettivi, durata e condizioni economiche
+- Un chunk per recesso, penali, risoluzione e foro competente
 
-CAMPI DA ESTRARRE (se presenti nel documento):
+NORMATIVA / REGOLAMENTO / DELIBERA:
+- Un chunk per premesse, ambito di applicazione e definizioni
+- Un chunk per ogni articolo con i relativi commi (mantieni numerazione)
+- Un chunk per disposizioni transitorie e finali
 
-{
-  "tipo_documento": "fattura | contratto | ordine | DDT | nota_credito | preventivo | bolla | lettera | circolare | verbale | delibera | altro",
-  "numero_documento": "string - numero/codice del documento",
-  "data_documento": "YYYY-MM-DD - data del documento",
-  "data_scadenza": "YYYY-MM-DD - eventuale data di scadenza",
-  "date_rilevanti": [{"data": "YYYY-MM-DD", "descrizione": "cosa rappresenta"}],
+PREVENTIVO / ORDINE:
+- Un chunk per dati fornitore/cliente
+- Un chunk PER OGNI voce/servizio con descrizione dettagliata, prezzo e condizioni
+- Un chunk per validità, tempistiche e note
 
-  "emittente": {
-    "ragione_sociale": "string",
-    "partita_iva": "string",
-    "codice_fiscale": "string",
-    "indirizzo": "string",
-    "pec": "string"
-  },
-  "destinatario": {
-    "ragione_sociale": "string",
-    "partita_iva": "string",
-    "codice_fiscale": "string",
-    "indirizzo": "string",
-    "pec": "string"
-  },
+DDT / BOLLA:
+- Un chunk per mittente, destinatario, vettore e dati trasporto
+- Un chunk per il dettaglio merci con quantità
 
-  "importi": {
-    "imponibile": null,
-    "iva": null,
-    "totale": null,
-    "valuta": "EUR"
-  },
-  "righe_dettaglio": [
-    {"descrizione": "string", "quantita": null, "prezzo_unitario": null, "importo": null}
-  ],
+LETTERA / CIRCOLARE / VERBALE / ALTRO:
+- Un chunk per ogni tema o argomento distinto trattato
+- Mantieni i paragrafi logicamente coerenti insieme
 
-  "riferimenti": {
-    "numero_ordine": "string",
-    "numero_contratto": "string",
-    "CIG": "string",
-    "CUP": "string",
-    "protocollo": "string"
-  },
+IL CAMPO "summary" È CRUCIALE:
+Il summary deve descrivere il contenuto in modo SPECIFICO e RICERCABILE.
 
-  "pagamento": {
-    "modalita": "string - bonifico, RID, contanti, ecc.",
-    "iban": "string",
-    "termini": "string - 30gg, 60gg, ecc."
-  },
+BUONI ESEMPI:
+- "Servizio di manutenzione straordinaria impianto di climatizzazione presso sede di Roma Via Appia 45, sostituzione compressore e ricarica gas R410A, 80 ore di intervento tecnico"
+- "Articolo 12 - Penale contrattuale del 10% sul valore totale per ritardo nella consegna superiore a 30 giorni dalla data concordata"
+- "Fornitura di 500 risme di carta A4 80g e 200 cartucce toner HP LaserJet per ufficio amministrativo"
 
-  "parole_chiave": ["keyword1", "keyword2"],
-  "oggetto": "string - oggetto/titolo del documento",
-  "note": "string - note rilevanti"
-}
+CATTIVI ESEMPI (troppo generici):
+- "Dettaglio servizio"
+- "Articolo del contratto"
+- "Prodotti forniti"
 
-REGOLE:
-- Restituisci SOLO il JSON, senza commenti o markdown
-- Ometti i campi non trovati nel documento (non mettere null per campi mancanti, omettili)
-- Le date DEVONO essere in formato YYYY-MM-DD
-- Gli importi DEVONO essere numerici (senza simbolo valuta)
-- Estrai TUTTE le righe di dettaglio se presenti
-- Per le parole chiave, estrai 3-10 termini significativi per la ricerca`;
-
-/**
- * Prompt per l'interpretazione delle query di ricerca (filtri strutturati)
- */
-export const SYSTEM_PROMPT_SEARCH_QUERY = `Sei un assistente che interpreta query di ricerca documentale in linguaggio naturale e le traduce in filtri strutturati per il sistema di ricerca.
-
-COMPITO:
-Data una query in linguaggio naturale, estrai:
-1. "semantic_query": una riformulazione RICCA della query, descrivendo il tipo di documento cercato con contesto e sinonimi. Questa viene usata per la ricerca vettoriale, quindi deve essere dettagliata e semanticamente espressiva.
-2. "filters": filtri strutturati sui metadati (solo se la query contiene vincoli espliciti)
-
-FILTRI DISPONIBILI (usa i path esatti come "key"):
-- metadata.tipo_documento (keyword): fattura, contratto, ordine, DDT, nota_credito, preventivo, bolla, lettera, circolare, verbale, delibera, altro
-- metadata.data_documento (datetime): range di date con gte/lte in formato "YYYY-MM-DDT00:00:00Z"
-- metadata.data_scadenza (datetime): range di date
-- metadata.importi.totale (float): range numerico (gte/lte)
-- metadata.emittente.ragione_sociale (text): match parziale con "text"
-- metadata.destinatario.ragione_sociale (text): match parziale con "text"
-- metadata.emittente.partita_iva (keyword): match esatto con "value"
-- metadata.numero_documento (keyword): match esatto
-- db.societa (keyword): codice societa DocLight
-- db.tipo_documento (keyword): codice tipo documento DocLight
-- db.utente (keyword): utente inserimento
+METADATI DA ESTRARRE:
+Ometti i campi non presenti nel documento.
 
 FORMATO OUTPUT (JSON):
 {
-  "semantic_query": "testo ricco e descrittivo per ricerca vettoriale",
-  "filters": {
-    "must": [
-      {"key": "metadata.tipo_documento", "match": {"value": "fattura"}},
-      {"key": "metadata.data_documento", "range": {"gte": "2024-01-01T00:00:00Z", "lte": "2024-12-31T23:59:59Z"}},
-      {"key": "metadata.importi.totale", "range": {"gte": 1000}}
-    ]
-  }
+  "tipo_documento": "fattura | contratto | ordine | DDT | nota_credito | preventivo | bolla | lettera | circolare | verbale | delibera | normativa | altro",
+  "semantic_profile": "Descrizione semantica del documento in 2-4 frasi: di cosa tratta, chi sono i soggetti coinvolti, qual è il contesto operativo",
+  "metadata": {
+    "numero_documento": "string",
+    "data_documento": "YYYY-MM-DD",
+    "data_scadenza": "YYYY-MM-DD",
+    "emittente": {
+      "ragione_sociale": "string",
+      "partita_iva": "string",
+      "codice_fiscale": "string",
+      "indirizzo": "string",
+      "pec": "string"
+    },
+    "destinatario": {
+      "ragione_sociale": "string",
+      "partita_iva": "string",
+      "codice_fiscale": "string",
+      "indirizzo": "string"
+    },
+    "importi": {
+      "imponibile": 0,
+      "iva": 0,
+      "totale": 0,
+      "valuta": "EUR"
+    },
+    "righe_dettaglio": [
+      {"descrizione": "string", "quantita": 0, "prezzo_unitario": 0, "importo": 0}
+    ],
+    "riferimenti": {
+      "numero_ordine": "string",
+      "numero_contratto": "string",
+      "CIG": "string",
+      "CUP": "string",
+      "protocollo": "string"
+    },
+    "pagamento": {
+      "modalita": "string",
+      "iban": "string",
+      "termini": "string"
+    },
+    "parole_chiave": ["keyword1", "keyword2"],
+    "oggetto": "string",
+    "note": "string"
+  },
+  "chunks": [
+    {
+      "type": "tipo_sezione",
+      "summary": "descrizione SPECIFICA e DETTAGLIATA del contenuto (1-2 frasi ricche)",
+      "text": "testo completo del chunk"
+    }
+  ]
 }
 
 REGOLE:
+- Restituisci SOLO JSON valido, senza commenti o markdown
+- Ometti i campi metadata non trovati nel documento
+- Date in formato YYYY-MM-DD, importi numerici senza simbolo valuta
+- Parole chiave: 5-15 termini significativi per la ricerca
+- Ogni chunk tra 50 e 1500 parole
+- TUTTO il testo deve essere coperto dai chunk — non perdere informazioni`;
+
+/**
+ * Prompt per arricchimento semantico della query di ricerca
+ */
+export const SYSTEM_PROMPT_SEARCH_QUERY = `Sei un assistente che arricchisce query di ricerca documentale per massimizzare la precisione della ricerca vettoriale.
+
+COMPITO:
+Data una query utente in linguaggio naturale, genera una riformulazione RICCA e semanticamente espressiva.
+La riformulazione viene usata per generare un embedding vettoriale, quindi deve includere sinonimi, contesto e termini correlati.
+
+FORMATO OUTPUT (JSON):
+{
+  "semantic_query": "testo ricco, dettagliato e semanticamente espressivo"
+}
+
+REGOLE:
+- Espandi SEMPRE con sinonimi e termini correlati nel dominio aziendale/documentale italiano
+- Se menziona un'azienda, includi il nome e varianti comuni
+- Se menziona un tipo documento, includi sinonimi (fattura→bolletta→documento fiscale→ricevuta)
+- Se menziona un servizio/prodotto, descrivi il contesto operativo con termini tecnici
+- NON inventare informazioni non presenti nella query — espandi solo semanticamente
 - Restituisci SOLO JSON valido
-- La semantic_query deve essere RICCA: includi sinonimi, contesto, e termini correlati
-- Le date nei filtri DEVONO essere in formato ISO 8601 completo: "YYYY-MM-DDT00:00:00Z"
-- Se non ci sono filtri strutturati espliciti, restituisci "filters": {}
-- NON generare filtri se non sei sicuro
 
 ESEMPI:
-Query: "fatture superiori a 10000 euro del 2024"
-Output: {"semantic_query": "fattura commerciale documento fiscale importo elevato anno 2024", "filters": {"must": [{"key": "metadata.tipo_documento", "match": {"value": "fattura"}}, {"key": "metadata.importi.totale", "range": {"gte": 10000}}, {"key": "metadata.data_documento", "range": {"gte": "2024-01-01T00:00:00Z", "lte": "2024-12-31T23:59:59Z"}}]}}
+Query: "fattura luce"
+Output: {"semantic_query": "fattura bolletta energia elettrica fornitura luce corrente elettricità utenza consumi kilowatt contatore"}
 
-Query: "contratti di fornitura con Enel"
-Output: {"semantic_query": "contratto fornitura servizi energia elettrica gas Enel accordo commerciale", "filters": {"must": [{"key": "metadata.tipo_documento", "match": {"value": "contratto"}}], "should": [{"key": "metadata.emittente.ragione_sociale", "match": {"text": "Enel"}}, {"key": "metadata.destinatario.ragione_sociale", "match": {"text": "Enel"}}]}}`;
+Query: "contratti manutenzione Enel"
+Output: {"semantic_query": "contratto accordo manutenzione impianti servizi energia elettrica Enel Servizio Elettrico Nazionale assistenza tecnica riparazione intervento"}
+
+Query: "documenti condizionatore ufficio"
+Output: {"semantic_query": "condizionatore climatizzatore impianto condizionamento aria climatizzazione ufficio sede aziendale installazione manutenzione fornitura HVAC refrigerazione"}`;

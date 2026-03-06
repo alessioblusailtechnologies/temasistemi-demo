@@ -13,10 +13,13 @@ export interface MetadataAI {
   data_documento?: string;
   data_scadenza?: string;
   oggetto?: string;
-  emittente?: { ragione_sociale?: string; partita_iva?: string };
+  emittente?: { ragione_sociale?: string; partita_iva?: string; pec?: string };
   destinatario?: { ragione_sociale?: string; partita_iva?: string };
   importi?: { imponibile?: number; iva?: number; totale?: number; valuta?: string };
   parole_chiave?: string[];
+  riferimenti?: { numero_ordine?: string };
+  righe_dettaglio?: { descrizione?: string; quantita?: number; prezzo_unitario?: number; importo?: number }[];
+  note?: string;
   [key: string]: any;
 }
 
@@ -36,6 +39,13 @@ export interface MetadataDB {
   content_type?: string;
 }
 
+export interface MatchingChunk {
+  type: string;
+  summary: string;
+  text: string;
+  similarity: number;
+}
+
 export interface SearchResult {
   nome_file: string;
   score: number;
@@ -43,14 +53,12 @@ export interface SearchResult {
   semantic_profile: string;
   metadata_ai: MetadataAI | null;
   metadata_db: MetadataDB | null;
+  matching_chunks: MatchingChunk[];
 }
 
 export interface SearchResponse {
   query: string;
-  interpreted: {
-    semantic_query: string;
-    filters: any;
-  };
+  semantic_query: string;
   results: SearchResult[];
   total: number;
   elapsed_ms: number;

@@ -42,31 +42,14 @@
   </div>
 }
 
-<!-- AI Filters Applied -->
-@if (displayFilters.length > 0 || semanticQuery) {
+<!-- AI Semantic Interpretation -->
+@if (semanticQuery && results.length > 0) {
   <div class="ai-filters-bar">
-    @if (semanticQuery) {
-      <div class="ai-interpreted">
-        <i class="fas fa-brain"></i>
-        <span class="interpreted-label">Interpretazione AI:</span>
-        <span class="interpreted-query">{{ semanticQuery }}</span>
-      </div>
-    }
-    @if (displayFilters.length > 0) {
-      <div class="ai-filters-row">
-        <i class="fas fa-filter"></i>
-        <span class="filters-label">Filtri applicati:</span>
-        @for (f of displayFilters; track f.label + f.value) {
-          <span class="filter-chip" [ngClass]="{
-            'filter-must': f.type === 'must',
-            'filter-should': f.type === 'should',
-            'filter-must-not': f.type === 'must_not'
-          }">
-            <span class="filter-chip-label">{{ f.label }}:</span> {{ f.value }}
-          </span>
-        }
-      </div>
-    }
+    <div class="ai-interpreted">
+      <i class="fas fa-brain"></i>
+      <span class="interpreted-label">Interpretazione AI:</span>
+      <span class="interpreted-query">{{ semanticQuery }}</span>
+    </div>
   </div>
 }
 
@@ -89,6 +72,7 @@
         @if (showRelevanceColumn) {
           <th class="center">Rilevanza</th>
         }
+        <th class="center">Dettaglio AI</th>
       </tr>
     </thead>
     <tbody>
@@ -114,12 +98,182 @@
                   'rel-bassa': doc.relevance === 'bassa'
                 }">
                 {{ doc.relevance === 'alta' ? 'Alta' : doc.relevance === 'media' ? 'Media' : 'Bassa' }}
-                ({{ doc.score_percent }}%)
+                ({{ doc.score_percent | number:'1.1-1' }}%)
               </span>
             </td>
           }
+          <td class="center">
+            <button class="detail-btn" (click)="openDetail(doc)" title="Dettaglio AI">
+              <i class="fas fa-wand-magic-sparkles"></i>
+            </button>
+          </td>
         </tr>
       }
     </tbody>
   </table>
+}
+
+<!-- Detail Modal -->
+@if (selectedDoc) {
+  <div class="modal-overlay" (click)="closeDetail()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fas fa-wand-magic-sparkles"></i>
+          Dettaglio AI — {{ selectedDoc.nome_file }}
+        </div>
+        <button class="modal-close" (click)="closeDetail()"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Semantic profile -->
+        @if (selectedDoc.semantic_profile) {
+          <div class="detail-section">
+            <div class="detail-label"><i class="fas fa-brain"></i> Profilo semantico</div>
+            <div class="detail-text">{{ selectedDoc.semantic_profile }}</div>
+          </div>
+        }
+
+        <!-- AI Metadata -->
+        @if (selectedDoc.metadata_ai) {
+          <div class="detail-section">
+            <div class="detail-label"><i class="fas fa-tags"></i> Metadati AI</div>
+            <div class="metadata-grid">
+              @if (selectedDoc.metadata_ai!.oggetto) {
+                <div class="meta-item meta-full-width">
+                  <span class="meta-key">Oggetto:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_ai!.oggetto }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_ai!.emittente?.ragione_sociale) {
+                <div class="meta-item">
+                  <span class="meta-key">Emittente:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_ai!.emittente!.ragione_sociale }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_ai!.destinatario?.ragione_sociale) {
+                <div class="meta-item">
+                  <span class="meta-key">Destinatario:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_ai!.destinatario!.ragione_sociale }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_ai!.importi?.totale) {
+                <div class="meta-item">
+                  <span class="meta-key">Importo totale:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_ai!.importi!.totale | number:'1.2-2':'it-IT' }} {{ selectedDoc.metadata_ai!.importi!.valuta || 'EUR' }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_ai!.numero_documento) {
+                <div class="meta-item">
+                  <span class="meta-key">N. documento:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_ai!.numero_documento }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_ai!.riferimenti?.numero_ordine) {
+                <div class="meta-item">
+                  <span class="meta-key">N. ordine:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_ai!.riferimenti!.numero_ordine }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_ai!.data_documento) {
+                <div class="meta-item">
+                  <span class="meta-key">Data documento:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_ai!.data_documento }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_ai!.parole_chiave?.length) {
+                <div class="meta-item meta-keywords">
+                  <span class="meta-key">Keywords:</span>
+                  <span class="meta-value">
+                    @for (kw of selectedDoc.metadata_ai!.parole_chiave!; track kw) {
+                      <span class="keyword-tag">{{ kw }}</span>
+                    }
+                  </span>
+                </div>
+              }
+              @if (selectedDoc.metadata_ai!.note) {
+                <div class="meta-item meta-full-width">
+                  <span class="meta-key">Note:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_ai!.note }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- DB Metadata -->
+        @if (selectedDoc.metadata_db) {
+          <div class="detail-section">
+            <div class="detail-label"><i class="fas fa-database"></i> Metadati DB</div>
+            <div class="metadata-grid">
+              @if (selectedDoc.metadata_db!.descrizione) {
+                <div class="meta-item">
+                  <span class="meta-key">Descrizione:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_db!.descrizione }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_db!.tipo_documento) {
+                <div class="meta-item">
+                  <span class="meta-key">Tipo:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_db!.tipo_documento }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_db!.societa) {
+                <div class="meta-item">
+                  <span class="meta-key">Società:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_db!.societa }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_db!.utente) {
+                <div class="meta-item">
+                  <span class="meta-key">Utente:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_db!.utente }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_db!.data_inserimento) {
+                <div class="meta-item">
+                  <span class="meta-key">Data inserimento:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_db!.data_inserimento }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_db!.mime_type) {
+                <div class="meta-item">
+                  <span class="meta-key">MIME:</span>
+                  <span class="meta-value">{{ selectedDoc.metadata_db!.mime_type }}</span>
+                </div>
+              }
+              @if (selectedDoc.metadata_db!.doc_size) {
+                <div class="meta-item">
+                  <span class="meta-key">Dimensione:</span>
+                  <span class="meta-value">{{ formatFileSize(selectedDoc.metadata_db!.doc_size) }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Matching Chunks -->
+        @if (selectedDoc.matching_chunks?.length) {
+          <div class="detail-section">
+            <div class="detail-label"><i class="fas fa-puzzle-piece"></i> Chunk corrispondenti ({{ selectedDoc.matching_chunks.length }})</div>
+            <div class="chunks-list">
+              @for (chunk of selectedDoc.matching_chunks; track $index) {
+                <div class="chunk-item">
+                  <div class="chunk-header">
+                    <span class="chunk-type-tag">{{ chunk.type }}</span>
+                    <span class="chunk-similarity">{{ formatChunkSimilarity(chunk.similarity) }}</span>
+                  </div>
+                  <div class="chunk-summary">{{ chunk.summary }}</div>
+                  <details class="chunk-text-details">
+                    <summary>Mostra testo completo</summary>
+                    <pre class="chunk-text">{{ chunk.text }}</pre>
+                  </details>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
 }
