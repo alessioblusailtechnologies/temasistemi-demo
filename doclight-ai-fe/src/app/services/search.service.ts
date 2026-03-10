@@ -56,9 +56,20 @@ export interface SearchResult {
   matching_chunks: MatchingChunk[];
 }
 
+export interface AppliedFilter {
+  type: 'data' | 'tipo_documento' | 'importo';
+  label: string;
+  data_da?: string;
+  data_a?: string;
+  value?: string;
+  importo_min?: number | null;
+  importo_max?: number | null;
+}
+
 export interface SearchResponse {
   query: string;
   semantic_query: string;
+  filters: AppliedFilter[];
   results: SearchResult[];
   total: number;
   elapsed_ms: number;

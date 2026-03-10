@@ -101,6 +101,64 @@ export async function getDocumentsMetadataBatch(docNames) {
 }
 
 /**
+ * Recupera i nomi dei documenti che soddisfano i filtri strutturati.
+ * Filtri supportati: data_da, data_a, tipo_documento.
+ * La data viene cercata su DT_DOC (data documento) OR DT_RIF (data riferimento).
+ */
+export async function getFilteredDocNames(filters) {
+    if (!filters || !Object.keys(filters).length) return null;
+
+    const conditions = [];
+    const binds = {};
+
+    if (filters.data_da || filters.data_a) {
+        // Un documento matcha se DT_DOC è nel range OPPURE DT_RIF è nel range.
+        // Le condizioni su ciascuna colonna devono essere in AND tra loro.
+        const dtDocParts = [];
+        const dtRifParts = [];
+
+        if (filters.data_da) {
+            dtDocParts.push('det.DT_DOC >= :dataDa');
+            dtRifParts.push('det.DT_RIF >= :dataDa');
+            binds.dataDa = new Date(filters.data_da);
+        }
+        if (filters.data_a) {
+            const endDate = new Date(filters.data_a);
+            endDate.setDate(endDate.getDate() + 1);
+            dtDocParts.push('det.DT_DOC < :dataA');
+            dtRifParts.push('det.DT_RIF < :dataA');
+            binds.dataA = endDate;
+        }
+
+        conditions.push(
+            `((${dtDocParts.join(' AND ')}) OR (${dtRifParts.join(' AND ')}))`
+        );
+    }
+
+    if (filters.tipo_documento) {
+        conditions.push('LOWER(det.CD_TIP) = :tipDoc');
+        binds.tipDoc = filters.tipo_documento.toLowerCase();
+    }
+
+    if (!conditions.length) return null;
+
+    const conn = await pool.getConnection();
+    try {
+        const sql = `SELECT d.NAME AS nome_file
+            FROM DOCLIGHT.TD000_DOC d
+            JOIN DOCLIGHT.TD001_DOC_DET det ON det.CD_DOC = d.NAME
+            WHERE ${conditions.join(' AND ')}`;
+
+        const result = await conn.execute(sql, binds, {
+            outFormat: oracledb.OUT_FORMAT_OBJECT,
+        });
+        return new Set(result.rows.map(r => r.NOME_FILE));
+    } finally {
+        await conn.close();
+    }
+}
+
+/**
  * Recupera il contenuto binario di un documento (BLOB/BFILE) + MIME type.
  */
 export async function getDocumentContent(docName) {

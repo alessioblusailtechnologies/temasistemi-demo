@@ -220,6 +220,53 @@
   }
 }
 
+.ai-applied-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--tf-text-secondary);
+
+  > i { color: var(--tf-blue); font-size: 13px; }
+
+  .filters-label {
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 12px;
+  border-radius: 14px;
+  white-space: nowrap;
+
+  i { font-size: 11px; }
+
+  &.filter-data {
+    background: #FFF3E0;
+    color: #E65100;
+    border: 1px solid #FFE0B2;
+  }
+
+  &.filter-tipo_documento {
+    background: #E3F2FD;
+    color: #1565C0;
+    border: 1px solid #BBDEFB;
+  }
+
+  &.filter-importo {
+    background: #E8F5E9;
+    color: #2E7D32;
+    border: 1px solid #C8E6C9;
+  }
+}
+
 // ═══ RESULTS TABLE ═══
 .results-table {
   width: 100%;

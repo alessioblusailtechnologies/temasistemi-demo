@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { embedText, interpretSearchQuery } from './openai.js';
 import { searchDocuments, getClient } from './supabase.js';
-import { initPool, getDocumentsMetadataBatch, getAttachmentNames, getDocumentContent } from './oracle-db.js';
+import { initPool, getDocumentsMetadataBatch, getFilteredDocNames, getAttachmentNames, getDocumentContent } from './oracle-db.js';
 
 const app = express();
 
@@ -32,17 +32,46 @@ app.post('/api/search', async (req, res) => {
             return res.status(400).json({ error: 'Il campo "query" è obbligatorio.' });
         }
 
-        // 1. Arricchisci semanticamente la query
+        // 1. Arricchisci semanticamente la query + estrai filtri strutturati
         const interpreted = await interpretSearchQuery(query.trim());
         const semanticQuery = interpreted.semantic_query || query;
+        const filters = interpreted.filters || {};
+        const hasFilters = Object.keys(filters).length > 0;
 
-        // 2. Genera embedding della query arricchita
-        const queryVector = await embedText(semanticQuery);
+        console.log('[search] Filtri estratti:', JSON.stringify(filters));
 
-        // 3. Ricerca vettoriale sui chunk
-        const searchResults = await searchDocuments(queryVector, top_k);
+        // 2. In parallelo: genera embedding + applica filtri su Oracle
+        const [queryVector, allowedDocNames] = await Promise.all([
+            embedText(semanticQuery),
+            hasFilters ? getFilteredDocNames(filters).catch(err => {
+                console.warn('[search] Filtro Oracle fallito:', err.message);
+                return null;
+            }) : Promise.resolve(null),
+        ]);
 
-        // 4. Arricchisci con metadati da Oracle
+        // 3. Ricerca vettoriale sui chunk (fetch più risultati se ci sono filtri)
+        const fetchCount = allowedDocNames ? Math.max(top_k * 3, 60) : top_k;
+        let searchResults = await searchDocuments(queryVector, fetchCount);
+
+        // 4. Applica filtri strutturati ai risultati vettoriali
+        if (allowedDocNames) {
+            searchResults = searchResults.filter(r => allowedDocNames.has(r.nome_file));
+            searchResults = searchResults.slice(0, top_k);
+            console.log(`[search] Dopo filtro DB: ${searchResults.length} risultati (da ${fetchCount} candidati, ${allowedDocNames.size} doc matchano filtri)`);
+        }
+
+        // 5. Applica filtro importo sui metadati AI (se presenti)
+        if (filters.importo_min || filters.importo_max) {
+            searchResults = searchResults.filter(r => {
+                const totale = r.metadata?.importi?.totale;
+                if (totale == null) return true; // mantieni se non ha info importo
+                if (filters.importo_min && totale < filters.importo_min) return false;
+                if (filters.importo_max && totale > filters.importo_max) return false;
+                return true;
+            });
+        }
+
+        // 6. Arricchisci con metadati da Oracle
         const docNames = searchResults.map(r => r.nome_file);
         let oracleMetadata = [];
         try {
@@ -70,7 +99,7 @@ app.post('/api/search', async (req, res) => {
             });
         }
 
-        // 5. Componi risultati
+        // 7. Componi risultati
         const results = searchResults.map(r => ({
             nome_file: r.nome_file,
             score: r.score,
@@ -81,9 +110,13 @@ app.post('/api/search', async (req, res) => {
             matching_chunks: r.matching_chunks,
         }));
 
+        // 8. Costruisci descrizione filtri per il frontend
+        const appliedFilters = buildFilterLabels(filters);
+
         return res.json({
             query: query.trim(),
             semantic_query: semanticQuery,
+            filters: appliedFilters,
             results,
             total: results.length,
             elapsed_ms: Date.now() - startTime,
@@ -145,6 +178,76 @@ function formatDate(d) {
     if (!d) return null;
     if (d instanceof Date) return d.toISOString().split('T')[0];
     return String(d);
+}
+
+/**
+ * Costruisce un array di filtri applicati con etichette leggibili per il frontend.
+ */
+function buildFilterLabels(filters) {
+    if (!filters || !Object.keys(filters).length) return [];
+
+    const applied = [];
+
+    if (filters.data_da || filters.data_a) {
+        const da = filters.data_da ? formatDateIT(filters.data_da) : null;
+        const a = filters.data_a ? formatDateIT(filters.data_a) : null;
+
+        let label;
+        if (da && a) {
+            if (filters.data_da === filters.data_a) {
+                label = da;
+            } else {
+                label = `${da} — ${a}`;
+            }
+        } else if (da) {
+            label = `dal ${da}`;
+        } else {
+            label = `fino al ${a}`;
+        }
+
+        applied.push({ type: 'data', label, data_da: filters.data_da, data_a: filters.data_a });
+    }
+
+    if (filters.tipo_documento) {
+        const typeMap = {
+            fattura: 'Fattura', contratto: 'Contratto', ordine: 'Ordine',
+            ddt: 'DDT', nota_credito: 'Nota di Credito', preventivo: 'Preventivo',
+            bolla: 'Bolla', lettera: 'Lettera', circolare: 'Circolare',
+            verbale: 'Verbale', delibera: 'Delibera', normativa: 'Normativa',
+            registro_contabile: 'Registro Contabile', rapporto_intervento: 'Rapporto Intervento',
+            documento_tecnico: 'Doc. Tecnico',
+        };
+        applied.push({
+            type: 'tipo_documento',
+            label: typeMap[filters.tipo_documento] || filters.tipo_documento,
+            value: filters.tipo_documento,
+        });
+    }
+
+    if (filters.importo_min != null || filters.importo_max != null) {
+        let label;
+        if (filters.importo_min != null && filters.importo_max != null) {
+            label = `${filters.importo_min.toLocaleString('it-IT')} — ${filters.importo_max.toLocaleString('it-IT')} €`;
+        } else if (filters.importo_min != null) {
+            label = `> ${filters.importo_min.toLocaleString('it-IT')} €`;
+        } else {
+            label = `< ${filters.importo_max.toLocaleString('it-IT')} €`;
+        }
+        applied.push({
+            type: 'importo',
+            label,
+            importo_min: filters.importo_min ?? null,
+            importo_max: filters.importo_max ?? null,
+        });
+    }
+
+    return applied;
+}
+
+function formatDateIT(isoStr) {
+    if (!isoStr) return '';
+    const [y, m, d] = isoStr.split('-');
+    return `${d}/${m}/${y}`;
 }
 
 // ---------------------------------------------------------------------------

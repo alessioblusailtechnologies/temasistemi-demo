@@ -42,14 +42,30 @@
   </div>
 }
 
-<!-- AI Semantic Interpretation -->
-@if (semanticQuery && results.length > 0) {
+<!-- AI Semantic Interpretation + Filters -->
+@if ((semanticQuery || appliedFilters.length > 0) && results.length > 0) {
   <div class="ai-filters-bar">
     <div class="ai-interpreted">
       <i class="fas fa-brain"></i>
       <span class="interpreted-label">Interpretazione AI:</span>
       <span class="interpreted-query">{{ semanticQuery }}</span>
     </div>
+    @if (appliedFilters.length > 0) {
+      <div class="ai-applied-filters">
+        <i class="fas fa-filter"></i>
+        <span class="filters-label">Filtri riconosciuti:</span>
+        @for (f of appliedFilters; track f.type) {
+          <span class="filter-chip" [ngClass]="'filter-' + f.type">
+            @switch (f.type) {
+              @case ('data') { <i class="fas fa-calendar-alt"></i> }
+              @case ('tipo_documento') { <i class="fas fa-file-alt"></i> }
+              @case ('importo') { <i class="fas fa-euro-sign"></i> }
+            }
+            {{ f.label }}
+          </span>
+        }
+      </div>
+    }
   </div>
 }
 

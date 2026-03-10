@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { SearchService, SearchResult, SearchResponse } from '../../services/search.service';
+import { SearchService, SearchResult, SearchResponse, AppliedFilter } from '../../services/search.service';
 
 interface DisplayResult extends SearchResult {
   relevance: 'alta' | 'media' | 'bassa';
@@ -25,6 +25,7 @@ export class SearchComponent {
   bannerText = '';
   results: DisplayResult[] = [];
   semanticQuery = '';
+  appliedFilters: AppliedFilter[] = [];
   elapsedMs = 0;
   selectedDoc: DisplayResult | null = null;
 
@@ -60,12 +61,14 @@ export class SearchComponent {
     this.loading = true;
     this.showBanner = false;
     this.results = [];
+    this.appliedFilters = [];
     this.showRelevanceColumn = false;
 
     this.searchService.search({ query: q, top_k: 20 }).subscribe({
       next: (resp: SearchResponse) => {
         this.loading = false;
         this.semanticQuery = resp.semantic_query;
+        this.appliedFilters = resp.filters || [];
         this.elapsedMs = resp.elapsed_ms;
 
         this.results = resp.results.map(r => ({
