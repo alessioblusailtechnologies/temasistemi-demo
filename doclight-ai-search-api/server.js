@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { embedText, interpretSearchQuery } from './openai.js';
+import { embedText, interpretSearchQuery, extractChatSearchQuery, streamChatResponse } from './openai.js';
 import { searchDocuments, getClient } from './supabase.js';
 import { initPool, getDocumentsMetadataBatch, getFilteredDocNames, getAttachmentNames, getDocumentContent } from './oracle-db.js';
 
@@ -125,6 +125,138 @@ app.post('/api/search', async (req, res) => {
     } catch (err) {
         console.error('[search] Errore:', err);
         return res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/chat  (SSE streaming)
+// ---------------------------------------------------------------------------
+
+app.post('/api/chat', async (req, res) => {
+    const { message, history = [] } = req.body;
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+        return res.status(400).json({ error: 'Il campo "message" è obbligatorio.' });
+    }
+
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const send = (event) => {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    try {
+        // 1. Estrai query di ricerca dal contesto conversazionale
+        const extracted = await extractChatSearchQuery(message.trim(), history);
+
+        let context = '';
+        let sources = [];
+
+        if (extracted.needs_search && extracted.search_query) {
+            send({ type: 'status', content: 'Cerco nei documenti...' });
+
+            // 2. Riusa la pipeline di ricerca: interpreta + filtri + embedding + vector search
+            const interpreted = await interpretSearchQuery(extracted.search_query);
+            const semanticQuery = interpreted.semantic_query || extracted.search_query;
+            const filters = interpreted.filters || {};
+            const hasFilters = Object.keys(filters).length > 0;
+
+            const [queryVector, allowedDocNames] = await Promise.all([
+                embedText(semanticQuery),
+                hasFilters ? getFilteredDocNames(filters).catch(() => null) : Promise.resolve(null),
+            ]);
+
+            let searchResults = await searchDocuments(queryVector, allowedDocNames ? 30 : 10);
+
+            if (allowedDocNames) {
+                searchResults = searchResults.filter(r => allowedDocNames.has(r.nome_file));
+                searchResults = searchResults.slice(0, 10);
+            }
+
+            if (filters.importo_min || filters.importo_max) {
+                searchResults = searchResults.filter(r => {
+                    const totale = r.metadata?.importi?.totale;
+                    if (totale == null) return true;
+                    if (filters.importo_min && totale < filters.importo_min) return false;
+                    if (filters.importo_max && totale > filters.importo_max) return false;
+                    return true;
+                });
+            }
+
+            // 3. Costruisci contesto RAG dai chunk più rilevanti
+            if (searchResults.length > 0) {
+                // Arricchisci con metadati Oracle per dare contesto al LLM
+                const docNames = searchResults.map(r => r.nome_file);
+                let oracleMetadata = [];
+                try {
+                    oracleMetadata = await getDocumentsMetadataBatch(docNames);
+                } catch { /* ignora */ }
+                const oracleMap = new Map();
+                for (const row of oracleMetadata) {
+                    oracleMap.set(row.NOME_FILE, row);
+                }
+
+                const contextParts = [];
+                for (const doc of searchResults.slice(0, 8)) {
+                    const oracleMeta = oracleMap.get(doc.nome_file);
+                    const dataDoc = oracleMeta?.DATA_DOCUMENTO
+                        ? formatDate(oracleMeta.DATA_DOCUMENTO)
+                        : (doc.metadata?.data_documento || '');
+                    const tipo = doc.metadata?.tipo_documento || oracleMeta?.TIPO_DOCUMENTO || '';
+
+                    let header = `[Documento: ${doc.nome_file}]`;
+                    if (tipo) header += ` Tipo: ${tipo}`;
+                    if (dataDoc) header += ` Data: ${dataDoc}`;
+                    if (doc.semantic_profile) header += `\nProfilo: ${doc.semantic_profile}`;
+
+                    const chunkTexts = doc.matching_chunks
+                        .slice(0, 2)
+                        .map(c => c.text)
+                        .join('\n');
+
+                    contextParts.push(`${header}\n${chunkTexts}`);
+
+                    sources.push({
+                        nome_file: doc.nome_file,
+                        score: doc.score,
+                        score_percent: doc.score_percent,
+                        tipo_documento: tipo,
+                        data_documento: dataDoc,
+                        semantic_profile: doc.semantic_profile,
+                    });
+                }
+                context = contextParts.join('\n\n---\n\n');
+            }
+
+            send({ type: 'status', content: `${searchResults.length} documenti trovati` });
+        }
+
+        // 4. Genera risposta conversazionale in streaming
+        send({ type: 'status', content: 'Genero la risposta...' });
+
+        const stream = await streamChatResponse(message.trim(), history, context);
+
+        for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta?.content;
+            if (delta) {
+                send({ type: 'delta', content: delta });
+            }
+        }
+
+        // 5. Invia sorgenti e chiudi
+        send({ type: 'sources', sources });
+        send({ type: 'done' });
+
+    } catch (err) {
+        console.error('[chat] Errore:', err);
+        send({ type: 'error', message: err.message || 'Errore interno' });
+    } finally {
+        res.end();
     }
 });
 
@@ -261,6 +393,7 @@ async function start() {
     app.listen(PORT, () => {
         console.log(`DocLight AI Search API su http://localhost:${PORT}`);
         console.log(`  POST /api/search   { "query": "testo", "top_k": 20 }`);
+        console.log(`  POST /api/chat     { "message": "testo", "history": [] }  (SSE)`);
         console.log(`  GET  /api/document/:name/download`);
         console.log(`  GET  /api/document/:name/attachments`);
         console.log(`  GET  /api/health`);

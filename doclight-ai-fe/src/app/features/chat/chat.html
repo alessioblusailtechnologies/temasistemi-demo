@@ -1,0 +1,99 @@
+<div class="chat-container">
+  <!-- Header -->
+  <div class="chat-header">
+    <div class="chat-header-left">
+      <i class="fas fa-robot"></i>
+      <span class="chat-title">DocLight AI Assistant</span>
+    </div>
+    @if (messages.length > 0) {
+      <button class="clear-btn" (click)="clearChat()" title="Nuova conversazione">
+        <i class="fas fa-plus"></i> Nuova chat
+      </button>
+    }
+  </div>
+
+  <!-- Messages area -->
+  <div class="chat-messages" #messagesContainer>
+    @if (messages.length === 0) {
+      <!-- Welcome -->
+      <div class="chat-welcome">
+        <div class="welcome-icon"><i class="fas fa-robot"></i></div>
+        <h2>Ciao! Sono DocLight AI</h2>
+        <p>Posso aiutarti a cercare e analizzare i documenti aziendali. Chiedimi qualsiasi cosa!</p>
+        <div class="chat-suggestions">
+          @for (s of suggestions; track s) {
+            <button class="suggestion-btn" (click)="useSuggestion(s)">
+              <i class="fas fa-arrow-right"></i> {{ s }}
+            </button>
+          }
+        </div>
+      </div>
+    }
+
+    @for (msg of messages; track $index) {
+      <div class="chat-message" [ngClass]="msg.role">
+        <!-- Avatar -->
+        <div class="msg-avatar">
+          @if (msg.role === 'user') {
+            <i class="fas fa-user"></i>
+          } @else {
+            <i class="fas fa-robot"></i>
+          }
+        </div>
+
+        <!-- Content -->
+        <div class="msg-body">
+          <div class="msg-role">{{ msg.role === 'user' ? 'Tu' : 'DocLight AI' }}</div>
+
+          @if (msg.status && msg.loading) {
+            <div class="msg-status">
+              <div class="typing-dots">
+                <span></span><span></span><span></span>
+              </div>
+              {{ msg.status }}
+            </div>
+          }
+
+          @if (msg.content) {
+            <div class="msg-text" [innerHTML]="formatMarkdown(msg.content)"></div>
+          }
+
+          <!-- Sources -->
+          @if (msg.sources && msg.sources.length > 0) {
+            <div class="msg-sources">
+              <div class="sources-label"><i class="fas fa-file-alt"></i> Documenti consultati ({{ msg.sources.length }})</div>
+              <div class="sources-list">
+                @for (src of msg.sources; track src.nome_file) {
+                  <a class="source-chip" [href]="getDownloadUrl(src.nome_file)" target="_blank" [title]="src.semantic_profile">
+                    <span class="source-score">{{ src.score_percent | number:'1.0-0' }}%</span>
+                    <span class="source-name">{{ src.nome_file }}</span>
+                    @if (src.data_documento) {
+                      <span class="source-date">{{ src.data_documento }}</span>
+                    }
+                  </a>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Input area -->
+  <div class="chat-input-area">
+    <div class="chat-input-bar">
+      <textarea
+        [(ngModel)]="input"
+        (keydown)="onKeydown($event)"
+        placeholder="Scrivi un messaggio..."
+        rows="1"
+        [disabled]="loading"
+      ></textarea>
+      <button class="send-btn" (click)="send()" [disabled]="loading || !input.trim()">
+        <i class="fas fa-paper-plane"></i>
+      </button>
+    </div>
+    <div class="chat-disclaimer">DocLight AI basa le risposte esclusivamente sui documenti aziendali indicizzati</div>
+  </div>
+</div>

@@ -27,3 +27,16 @@
 </div>
 
 <div class="footer">Release 1.0</div>
+
+<!-- Chat FAB + Panel -->
+<button class="chat-fab" (click)="toggleChat()" [class.open]="chatOpen" title="Assistente AI">
+  @if (chatOpen) {
+    <i class="fas fa-times"></i>
+  } @else {
+    <i class="fas fa-robot"></i>
+  }
+</button>
+
+@if (chatOpen) {
+  <app-chat class="chat-floating-panel" />
+}

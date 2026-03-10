@@ -92,10 +92,77 @@
   color: var(--tf-text-muted);
 }
 
+// ═══ CHAT FAB + FLOATING PANEL ═══
+.chat-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--tf-btn-blue);
+  color: var(--tf-white);
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, transform 0.2s;
+
+  &:hover {
+    background: var(--tf-btn-blue-hover);
+    transform: scale(1.05);
+  }
+
+  &.open {
+    background: #455A64;
+    font-size: 18px;
+  }
+}
+
+.chat-floating-panel {
+  position: fixed;
+  bottom: 92px;
+  right: 24px;
+  width: 420px;
+  height: 560px;
+  z-index: 1000;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  animation: chatSlideUp 0.2s ease-out;
+}
+
+@keyframes chatSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 1024px) {
   .navbar { overflow-x: auto; }
 }
 
 @media (max-width: 768px) {
   .main-content { padding: 14px; }
+
+  .chat-floating-panel {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 120px);
+    bottom: 88px;
+    right: 8px;
+  }
+
+  .chat-fab {
+    bottom: 16px;
+    right: 16px;
+  }
 }
