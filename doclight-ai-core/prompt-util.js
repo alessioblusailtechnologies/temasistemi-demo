@@ -62,6 +62,13 @@ DDT / BOLLA:
 - Un chunk per mittente, destinatario, vettore e dati trasporto
 - Un chunk per il dettaglio merci con quantità
 
+REGISTRO CONTABILE / REGISTRO IVA / LIBRO GIORNALE / RIEPILOGO:
+- Questo NON è una fattura: è un documento contabile riepilogativo che elenca operazioni
+- Il summary deve chiarire esplicitamente che si tratta di un registro/riepilogo, NON di una fattura singola
+- Un chunk per l'intestazione con periodo, società e tipo registro
+- Un chunk per le operazioni elencate (raggruppate per periodo o tipologia)
+- Un chunk per i totali e la liquidazione
+
 LETTERA / CIRCOLARE / VERBALE / ALTRO:
 - Un chunk per ogni tema o argomento distinto trattato
 - Mantieni i paragrafi logicamente coerenti insieme
@@ -84,8 +91,8 @@ Ometti i campi non presenti nel documento.
 
 FORMATO OUTPUT (JSON):
 {
-  "tipo_documento": "fattura | contratto | ordine | DDT | nota_credito | preventivo | bolla | lettera | circolare | verbale | delibera | normativa | altro",
-  "semantic_profile": "Descrizione semantica del documento in 2-4 frasi: di cosa tratta, chi sono i soggetti coinvolti, qual è il contesto operativo",
+  "tipo_documento": "fattura | contratto | ordine | DDT | nota_credito | preventivo | bolla | lettera | circolare | verbale | delibera | normativa | registro_contabile | rapporto_intervento | documento_tecnico | altro",
+  "semantic_profile": "Descrizione semantica PRECISA del documento in 2-4 frasi: di cosa tratta, chi sono i soggetti coinvolti, qual è il contesto operativo. IMPORTANTE: la descrizione deve permettere di DISTINGUERE questo documento da documenti simili. Es: un registro IVA NON è una fattura, è un riepilogo contabile che elenca fatture. Una fattura è un documento fiscale specifico emesso da un fornitore verso un cliente per beni/servizi specifici.",
   "metadata": {
     "numero_documento": "string",
     "data_documento": "YYYY-MM-DD",
@@ -143,36 +150,49 @@ REGOLE:
 - Date in formato YYYY-MM-DD, importi numerici senza simbolo valuta
 - Parole chiave: 5-15 termini significativi per la ricerca
 - Ogni chunk tra 50 e 1500 parole
-- TUTTO il testo deve essere coperto dai chunk — non perdere informazioni`;
+- TUTTO il testo deve essere coperto dai chunk — non perdere informazioni
+
+REGOLA CRITICA SULLA CLASSIFICAZIONE:
+- Un REGISTRO IVA o registro contabile NON è una "fattura". È un riepilogo contabile che elenca fatture. Classificalo come "registro_contabile".
+- Una FATTURA è un singolo documento fiscale emesso da un fornitore specifico verso un cliente specifico per beni/servizi specifici.
+- Un FAC SIMILE o modello NON è il documento reale: è un template. Indicalo nel semantic_profile.
+- Il summary dei chunk deve riflettere il tipo REALE del documento, non il contenuto che elenca.
+  Esempio: il summary di un chunk di un registro IVA deve dire "Registro IVA fatture emesse 2° trimestre 2021 della società DEMO con elenco operazioni verso ROSSI S.P.A., POWER INSTRUMENTS e GAMMA S.N.C."
+  e NON "Fattura emessa a ROSSI S.P.A. per importo 180,00 euro".`;
 
 /**
  * Prompt per arricchimento semantico della query di ricerca
  */
-export const SYSTEM_PROMPT_SEARCH_QUERY = `Sei un assistente che arricchisce query di ricerca documentale per massimizzare la precisione della ricerca vettoriale.
+export const SYSTEM_PROMPT_SEARCH_QUERY = `Sei un assistente che riformula query di ricerca documentale per massimizzare la precisione della ricerca vettoriale.
 
 COMPITO:
-Data una query utente in linguaggio naturale, genera una riformulazione RICCA e semanticamente espressiva.
-La riformulazione viene usata per generare un embedding vettoriale, quindi deve includere sinonimi, contesto e termini correlati.
+Data una query utente in linguaggio naturale, genera una riformulazione che PRESERVI IL SIGNIFICATO COMPLESSIVO della query.
+La riformulazione viene usata per generare un embedding vettoriale su documenti aziendali indicizzati.
 
 FORMATO OUTPUT (JSON):
 {
-  "semantic_query": "testo ricco, dettagliato e semanticamente espressivo"
+  "semantic_query": "testo riformulato in frasi coerenti"
 }
 
-REGOLE:
-- Espandi SEMPRE con sinonimi e termini correlati nel dominio aziendale/documentale italiano
-- Se menziona un'azienda, includi il nome e varianti comuni
-- Se menziona un tipo documento, includi sinonimi (fattura→bolletta→documento fiscale→ricevuta)
-- Se menziona un servizio/prodotto, descrivi il contesto operativo con termini tecnici
-- NON inventare informazioni non presenti nella query — espandi solo semanticamente
+REGOLE CRITICHE:
+- Riformula come FRASI NATURALI che mantengono il legame tra i concetti, NON come lista di parole scollegate
+- Il significato complessivo della query deve restare intatto: se l'utente cerca "fatture di cartolerie", il risultato deve matchare SOLO documenti che sono fatture E provengono da/riguardano cartolerie
+- Aggiungi sinonimi SOLO dove aiutano a trovare documenti pertinenti, senza diluire l'intento
+- NON espandere un singolo termine in modo eccessivo — non trasformare "fattura" in "fattura bolletta documento fiscale ricevuta registro IVA" perché questo fa matchare QUALSIASI documento fiscale
+- Se la query ha più concetti (es: "fatture" + "cartolerie"), mantienili COLLEGATI nelle frasi
+- NON inventare informazioni non presenti nella query
 - Restituisci SOLO JSON valido
 
 ESEMPI:
+
+Query: "fatture di cartolerie"
+Output: {"semantic_query": "fatture emesse da cartolerie o negozi di cancelleria, documenti fiscali relativi ad acquisti di materiale di cartoleria cancelleria penne quaderni articoli per ufficio"}
+
 Query: "fattura luce"
-Output: {"semantic_query": "fattura bolletta energia elettrica fornitura luce corrente elettricità utenza consumi kilowatt contatore"}
+Output: {"semantic_query": "fattura della luce, bolletta energia elettrica, documento fiscale per fornitura di corrente elettricità, consumi elettrici utenza"}
 
-Query: "contratti manutenzione Enel"
-Output: {"semantic_query": "contratto accordo manutenzione impianti servizi energia elettrica Enel Servizio Elettrico Nazionale assistenza tecnica riparazione intervento"}
+Query: "contratti Enel"
+Output: {"semantic_query": "contratto stipulato con Enel, accordo di fornitura energia elettrica o gas con Enel Servizio Elettrico Nazionale"}
 
-Query: "documenti condizionatore ufficio"
-Output: {"semantic_query": "condizionatore climatizzatore impianto condizionamento aria climatizzazione ufficio sede aziendale installazione manutenzione fornitura HVAC refrigerazione"}`;
+Query: "manutenzione condizionatori"
+Output: {"semantic_query": "intervento di manutenzione su impianti di condizionamento, riparazione climatizzatore aria condizionata, sostituzione filtri compressore HVAC"}`;

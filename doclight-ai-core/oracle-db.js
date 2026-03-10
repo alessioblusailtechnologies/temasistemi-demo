@@ -210,6 +210,52 @@ export async function getAttachments(docName) {
 }
 
 /**
+ * Recupera N documenti per ogni tipo documento (campione per demo)
+ */
+export async function getDocumentsSample(perType = 3) {
+    const conn = await pool.getConnection();
+    try {
+        const result = await conn.execute(
+            `SELECT * FROM (
+                SELECT
+                    d.NAME              AS nome_file,
+                    d.MIME_TYPE,
+                    d.DOC_SIZE,
+                    d.CONTENT_TYPE,
+                    DOCLIGHT.FN_GET_DOC_CONTENT(d.NAME) AS file_content,
+                    det.DS_DOC          AS descrizione,
+                    det.CD_TIP          AS tipo_documento,
+                    det.DT_INS          AS data_inserimento,
+                    det.DT_DOC          AS data_documento,
+                    det.DT_RIF          AS data_riferimento,
+                    det.CD_USR          AS utente,
+                    det.CD_SOC          AS societa,
+                    det.CD_ABS          AS abstract,
+                    det.FL_ALL          AS flag_allegato,
+                    det.NN_LIV_DOC      AS livello_riservatezza,
+                    ROW_NUMBER() OVER (PARTITION BY det.CD_TIP ORDER BY det.DT_INS DESC) AS rn_tipo
+                FROM DOCLIGHT.TD000_DOC d
+                JOIN DOCLIGHT.TD001_DOC_DET det ON det.CD_DOC = d.NAME
+            )
+            WHERE rn_tipo <= :perType
+            ORDER BY tipo_documento, rn_tipo`,
+            { perType },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+        );
+
+        for (const row of result.rows) {
+            if (row.FILE_CONTENT && typeof row.FILE_CONTENT.getData === 'function') {
+                row.FILE_CONTENT = await row.FILE_CONTENT.getData();
+            }
+        }
+
+        return result.rows;
+    } finally {
+        await conn.close();
+    }
+}
+
+/**
  * Recupera i tipi documento disponibili
  */
 export async function getDocumentTypes() {

@@ -4,6 +4,7 @@ import {
     closePool,
     countDocuments,
     getDocumentsBatch,
+    getDocumentsSample,
     getAttachments,
 } from './oracle-db.js';
 import {
@@ -24,6 +25,7 @@ import {
 
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '10', 10);
 const MAX_DOCUMENTS = parseInt(process.env.MAX_DOCUMENTS || '0', 10);
+const SAMPLE_PER_TYPE = parseInt(process.env.SAMPLE_PER_TYPE || '0', 10);
 
 // ---------------------------------------------------------------------------
 // Pipeline di ingestion per un singolo documento
@@ -148,37 +150,50 @@ async function processDocument(doc) {
 
 async function main() {
     console.log('=== DocLight AI - Ingestion Pipeline ===');
-    console.log(`Batch: ${BATCH_SIZE}, Max: ${MAX_DOCUMENTS || 'tutti'}\n`);
 
     await initPool();
     await ensureTable();
 
-    const totalInDb = await countDocuments();
-    const totalDocs = MAX_DOCUMENTS > 0 ? Math.min(MAX_DOCUMENTS, totalInDb) : totalInDb;
-    console.log(`Documenti in DB: ${totalInDb}, da elaborare: ${totalDocs}`);
+    let allDocs;
 
-    let processed = 0, errors = 0, totalChunks = 0, offset = 0;
+    if (SAMPLE_PER_TYPE > 0) {
+        // Modalità demo: N documenti per tipo
+        console.log(`Modalità SAMPLE: ${SAMPLE_PER_TYPE} documenti per tipo\n`);
+        allDocs = await getDocumentsSample(SAMPLE_PER_TYPE);
+        const types = [...new Set(allDocs.map(d => d.TIPO_DOCUMENTO))];
+        console.log(`${allDocs.length} documenti selezionati su ${types.length} tipi: ${types.join(', ')}`);
+    } else {
+        // Modalità standard: batch sequenziale
+        console.log(`Batch: ${BATCH_SIZE}, Max: ${MAX_DOCUMENTS || 'tutti'}\n`);
+        const totalInDb = await countDocuments();
+        const totalDocs = MAX_DOCUMENTS > 0 ? Math.min(MAX_DOCUMENTS, totalInDb) : totalInDb;
+        console.log(`Documenti in DB: ${totalInDb}, da elaborare: ${totalDocs}`);
 
-    while (offset < totalDocs) {
-        const batchSize = Math.min(BATCH_SIZE, totalDocs - offset);
-        console.log(`\n========== Batch ${Math.floor(offset / BATCH_SIZE) + 1} (offset: ${offset}) ==========`);
-
-        const batch = await getDocumentsBatch({ offset, limit: batchSize });
-        if (batch.length === 0) break;
-
-        for (const doc of batch) {
-            try {
-                const result = await processDocument(doc);
-                if (result) { processed++; totalChunks += result.chunksCount; }
-                else errors++;
-            } catch (err) {
-                console.error(`[FATALE] ${doc.NOME_FILE}:`, err);
-                errors++;
-            }
+        allDocs = [];
+        let offset = 0;
+        while (offset < totalDocs) {
+            const batchSize = Math.min(BATCH_SIZE, totalDocs - offset);
+            const batch = await getDocumentsBatch({ offset, limit: batchSize });
+            if (batch.length === 0) break;
+            allDocs.push(...batch);
+            offset += batchSize;
         }
+    }
 
-        offset += batchSize;
-        console.log(`\nProgresso: ${processed} doc (${totalChunks} chunk), ${errors} errori, ${offset}/${totalDocs}`);
+    let processed = 0, errors = 0, totalChunks = 0;
+
+    for (let i = 0; i < allDocs.length; i++) {
+        const doc = allDocs[i];
+        console.log(`\n========== [${i + 1}/${allDocs.length}] ==========`);
+        try {
+            const result = await processDocument(doc);
+            if (result) { processed++; totalChunks += result.chunksCount; }
+            else errors++;
+        } catch (err) {
+            console.error(`[FATALE] ${doc.NOME_FILE}:`, err);
+            errors++;
+        }
+        console.log(`Progresso: ${processed} ok, ${errors} errori, ${totalChunks} chunk totali`);
     }
 
     await closePool();
@@ -200,19 +215,28 @@ function buildFallbackText(doc) {
 
 /**
  * Costruisce il testo per l'embedding di un chunk.
- * Prepende il contesto del documento per dare significato al chunk anche in isolamento.
+ * Prepende una descrizione esplicita del documento per contestualizzare il chunk.
+ * Il contesto deve essere sufficientemente forte da differenziare documenti simili
+ * (es. un registro IVA che elenca fatture vs una fattura effettiva).
  */
 function buildChunkEmbeddingText(chunk, analysis) {
-    const context = [];
-    if (analysis.tipo_documento) context.push(`Tipo: ${analysis.tipo_documento}`);
-    if (analysis.metadata?.emittente?.ragione_sociale) context.push(`Emittente: ${analysis.metadata.emittente.ragione_sociale}`);
-    if (analysis.metadata?.destinatario?.ragione_sociale) context.push(`Destinatario: ${analysis.metadata.destinatario.ragione_sociale}`);
-    if (analysis.metadata?.data_documento) context.push(`Data: ${analysis.metadata.data_documento}`);
-    if (analysis.metadata?.oggetto) context.push(`Oggetto: ${analysis.metadata.oggetto}`);
-    if (analysis.metadata?.parole_chiave?.length) context.push(`Keywords: ${analysis.metadata.parole_chiave.join(', ')}`);
+    // Costruisci una frase descrittiva del documento, non solo tag
+    const docDesc = [];
+    if (analysis.tipo_documento) {
+        docDesc.push(`Questo è un documento di tipo "${analysis.tipo_documento}".`);
+    }
+    if (analysis.semantic_profile) {
+        docDesc.push(analysis.semantic_profile);
+    } else {
+        // Fallback: costruisci descrizione dai metadati
+        const meta = analysis.metadata || {};
+        if (meta.oggetto) docDesc.push(`Oggetto: ${meta.oggetto}.`);
+        if (meta.emittente?.ragione_sociale) docDesc.push(`Emittente: ${meta.emittente.ragione_sociale}.`);
+        if (meta.destinatario?.ragione_sociale) docDesc.push(`Destinatario: ${meta.destinatario.ragione_sociale}.`);
+    }
 
     const parts = [];
-    if (context.length) parts.push(`[${context.join(' | ')}]`);
+    if (docDesc.length) parts.push(docDesc.join(' '));
     if (chunk.summary) parts.push(chunk.summary);
     if (chunk.text) parts.push(chunk.text.substring(0, 18000));
 

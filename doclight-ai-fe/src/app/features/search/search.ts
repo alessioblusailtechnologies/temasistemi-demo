@@ -29,12 +29,14 @@ export class SearchComponent {
   selectedDoc: DisplayResult | null = null;
 
   suggestions = [
-    { label: 'Fattura condizionatore', query: 'Fattura del condizionatore di marzo' },
-    { label: 'Contratto fornitura carta', query: 'Contratto fornitura carta ufficio' },
-    { label: 'Fatture rete/luce settembre', query: 'Fatture per rete e luce di settembre' },
-    { label: 'Nota credito Jumbo', query: 'Nota di credito Jumbo Market' },
-    { label: 'DDT settembre', query: 'DDT consegna settembre' },
-    { label: 'Documenti tecnici', query: 'Documenti tecnici' },
+    { label: 'Fattura ristorante', query: 'Fattura del ristorante' },
+    { label: 'Fattura energia elettrica', query: 'Fattura energia elettrica luce' },
+    { label: 'Specifiche tecniche cantiere', query: 'Specifiche tecniche cantiere' },
+    { label: 'Ordine di lavoro', query: 'Ordine di lavoro intervento tecnico' },
+    { label: 'Disdetta contratto', query: 'Disdetta contratto fornitura' },
+    { label: 'Contratto lavoro dipendente', query: 'Contratto lavoro dipendente' },
+    { label: 'Bolla entrata', query: 'Bolla di entrata merce' },
+    { label: 'Catalogo cancelleria', query: 'Catalogo cancelleria ufficio' },
   ];
 
   constructor(private searchService: SearchService) {}
