@@ -1,5 +1,11 @@
 import OpenAI from 'openai';
-import { SYSTEM_PROMPT_SEARCH_QUERY, SYSTEM_PROMPT_CHAT_EXTRACT_QUERY, SYSTEM_PROMPT_CHAT } from './prompt-util.js';
+import {
+    SYSTEM_PROMPT_SEARCH_QUERY,
+    SYSTEM_PROMPT_CHAT_EXTRACT_QUERY,
+    SYSTEM_PROMPT_CHAT,
+    SYSTEM_PROMPT_AGENT_PLAN,
+    SYSTEM_PROMPT_AGENT_REPORT,
+} from './prompt-util.js';
 
 const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -102,6 +108,77 @@ export async function streamChatResponse(message, history = [], context = '') {
         stream: true,
         messages,
     });
+}
+
+/**
+ * Analizza il prompt dell'agent e produce un piano di esecuzione:
+ * quali documenti cercare, in che formato generare l'output, a chi inviarlo.
+ *
+ * @param {string} prompt - Il prompt libero dell'agent
+ * @returns {Promise<{search_query: string, output_format: string, report_title: string, email_to: string|null, email_subject: string|null}>}
+ */
+export async function planAgentExecution(prompt) {
+    const today = new Date().toISOString().split('T')[0];
+
+    const resp = await ai.chat.completions.create({
+        model: 'gpt-4o',
+        temperature: 0.1,
+        max_completion_tokens: 800,
+        messages: [
+            { role: 'system', content: SYSTEM_PROMPT_AGENT_PLAN },
+            { role: 'user', content: `(data odierna: ${today})\n\nPrompt agent:\n${prompt}` },
+        ],
+        response_format: { type: 'json_object' },
+    });
+
+    try {
+        const parsed = JSON.parse(resp.choices[0].message.content);
+        return {
+            search_query: parsed.search_query || prompt,
+            output_format: parsed.output_format || 'text',
+            report_title: parsed.report_title || 'Report DocLight',
+            email_to: parsed.email_to || null,
+            email_subject: parsed.email_subject || null,
+        };
+    } catch {
+        return {
+            search_query: prompt,
+            output_format: 'text',
+            report_title: 'Report DocLight',
+            email_to: null,
+            email_subject: null,
+        };
+    }
+}
+
+/**
+ * Genera il contenuto testuale del report basandosi sui documenti trovati.
+ *
+ * @param {string} prompt       - Il prompt originale dell'agent
+ * @param {string} context      - Contesto documentale (documenti trovati formattati)
+ * @param {number} docCount     - Numero di documenti trovati
+ * @returns {Promise<string>}   - Contenuto del report in markdown
+ */
+export async function generateAgentReport(prompt, context, docCount) {
+    const today = new Date().toLocaleDateString('it-IT', {
+        day: '2-digit', month: 'long', year: 'numeric',
+    });
+
+    const userMessage = context
+        ? `Prompt dell'utente: ${prompt}\n\nData: ${today}\nDocumenti trovati: ${docCount}\n\n--- DOCUMENTI ---\n${context}\n--- FINE DOCUMENTI ---`
+        : `Prompt dell'utente: ${prompt}\n\nData: ${today}\nNessun documento trovato nell'archivio.`;
+
+    const resp = await ai.chat.completions.create({
+        model: 'gpt-4o',
+        temperature: 0.3,
+        max_completion_tokens: 4000,
+        messages: [
+            { role: 'system', content: SYSTEM_PROMPT_AGENT_REPORT },
+            { role: 'user', content: userMessage },
+        ],
+    });
+
+    return resp.choices[0].message.content || 'Report non generato.';
 }
 
 /**

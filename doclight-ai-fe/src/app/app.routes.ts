@@ -15,6 +15,10 @@ export const routes: Routes = [
         path: 'search',
         loadComponent: () => import('./features/search/search').then(m => m.SearchComponent),
       },
+      {
+        path: 'agents',
+        loadComponent: () => import('./features/agents/agents').then(m => m.AgentsComponent),
+      },
     ],
   },
 ];

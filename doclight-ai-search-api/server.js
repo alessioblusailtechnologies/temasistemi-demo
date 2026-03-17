@@ -3,12 +3,13 @@ import express from 'express';
 import { embedText, interpretSearchQuery, extractChatSearchQuery, streamChatResponse } from './openai.js';
 import { searchDocuments, getClient } from './supabase.js';
 import { initPool, getDocumentsMetadataBatch, getFilteredDocNames, getAttachmentNames, getDocumentContent } from './oracle-db.js';
+import { executeAgent } from './agent-executor.js';
 
 const app = express();
 
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
@@ -295,6 +296,181 @@ app.get('/api/document/:name/attachments', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// AGENTS CRUD
+// ---------------------------------------------------------------------------
+
+const agentsTable = 'doclight_agents';
+const executionsTable = 'doclight_agent_executions';
+
+// GET /api/agents — lista agents
+app.get('/api/agents', async (_req, res) => {
+    try {
+        const sb = getClient();
+        const { data, error } = await sb
+            .from(agentsTable)
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return res.json(data);
+    } catch (err) {
+        console.error('[agents] Lista errore:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/agents/:id — singolo agent
+app.get('/api/agents/:id', async (req, res) => {
+    try {
+        const sb = getClient();
+        const { data, error } = await sb
+            .from(agentsTable)
+            .select('*')
+            .eq('id', req.params.id)
+            .single();
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: 'Agent non trovato' });
+        return res.json(data);
+    } catch (err) {
+        console.error('[agents] Get errore:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/agents — crea agent
+app.post('/api/agents', async (req, res) => {
+    try {
+        const { name, prompt, trigger_type, cron_expression, enabled } = req.body;
+        if (!name || !prompt) {
+            return res.status(400).json({ error: 'I campi "name" e "prompt" sono obbligatori.' });
+        }
+        if (trigger_type === 'scheduled' && !cron_expression) {
+            return res.status(400).json({ error: 'Il campo "cron_expression" è obbligatorio per agenti schedulati.' });
+        }
+        const sb = getClient();
+        const { data, error } = await sb
+            .from(agentsTable)
+            .insert({
+                name: name.trim(),
+                prompt: prompt.trim(),
+                trigger_type: trigger_type || 'manual',
+                cron_expression: cron_expression || null,
+                enabled: enabled !== false,
+            })
+            .select()
+            .single();
+        if (error) throw error;
+        return res.status(201).json(data);
+    } catch (err) {
+        console.error('[agents] Creazione errore:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/agents/:id — aggiorna agent
+app.put('/api/agents/:id', async (req, res) => {
+    try {
+        const { name, prompt, trigger_type, cron_expression, enabled } = req.body;
+        const sb = getClient();
+        const { data, error } = await sb
+            .from(agentsTable)
+            .update({
+                name: name?.trim(),
+                prompt: prompt?.trim(),
+                trigger_type,
+                cron_expression: cron_expression || null,
+                enabled,
+            })
+            .eq('id', req.params.id)
+            .select()
+            .single();
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: 'Agent non trovato' });
+        return res.json(data);
+    } catch (err) {
+        console.error('[agents] Aggiornamento errore:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/agents/:id — elimina agent
+app.delete('/api/agents/:id', async (req, res) => {
+    try {
+        const sb = getClient();
+        const { error } = await sb
+            .from(agentsTable)
+            .delete()
+            .eq('id', req.params.id);
+        if (error) throw error;
+        return res.status(204).send();
+    } catch (err) {
+        console.error('[agents] Eliminazione errore:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/agents/:id/run — esegui agent manualmente (sincrono)
+app.post('/api/agents/:id/run', async (req, res) => {
+    try {
+        const sb = getClient();
+
+        // Verifica che l'agent esista
+        const { data: agent, error: agentErr } = await sb
+            .from(agentsTable)
+            .select('*')
+            .eq('id', req.params.id)
+            .single();
+        if (agentErr || !agent) {
+            return res.status(404).json({ error: 'Agent non trovato' });
+        }
+
+        // Crea esecuzione in stato "pending"
+        const { data: execution, error: execErr } = await sb
+            .from(executionsTable)
+            .insert({
+                agent_id: agent.id,
+                status: 'pending',
+            })
+            .select()
+            .single();
+        if (execErr) throw execErr;
+
+        // Esecuzione sincrona — il client aspetta il risultato
+        await executeAgent(agent, execution.id);
+
+        // Leggi l'esecuzione aggiornata
+        const { data: completed } = await sb
+            .from(executionsTable)
+            .select('*')
+            .eq('id', execution.id)
+            .single();
+
+        return res.json(completed || execution);
+
+    } catch (err) {
+        console.error('[agents] Esecuzione errore:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/agents/:id/executions — storico esecuzioni
+app.get('/api/agents/:id/executions', async (req, res) => {
+    try {
+        const sb = getClient();
+        const { data, error } = await sb
+            .from(executionsTable)
+            .select('*')
+            .eq('agent_id', req.params.id)
+            .order('started_at', { ascending: false })
+            .limit(50);
+        if (error) throw error;
+        return res.json(data);
+    } catch (err) {
+        console.error('[agents] Esecuzioni errore:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/health
 // ---------------------------------------------------------------------------
 
@@ -396,6 +572,12 @@ async function start() {
         console.log(`  POST /api/chat     { "message": "testo", "history": [] }  (SSE)`);
         console.log(`  GET  /api/document/:name/download`);
         console.log(`  GET  /api/document/:name/attachments`);
+        console.log(`  GET  /api/agents`);
+        console.log(`  POST /api/agents`);
+        console.log(`  PUT  /api/agents/:id`);
+        console.log(`  DEL  /api/agents/:id`);
+        console.log(`  POST /api/agents/:id/run`);
+        console.log(`  GET  /api/agents/:id/executions`);
         console.log(`  GET  /api/health`);
     });
 }

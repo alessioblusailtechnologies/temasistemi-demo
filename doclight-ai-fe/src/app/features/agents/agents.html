@@ -1,0 +1,274 @@
+<!-- ═══ HEADER ═══ -->
+<div class="agents-header">
+  <div class="header-left">
+    <h1><i class="fas fa-robot"></i> Agents</h1>
+    <p class="subtitle">Crea e gestisci agenti AI per automatizzare operazioni sui tuoi documenti</p>
+  </div>
+  <button class="btn-primary" (click)="openCreate()">
+    <i class="fas fa-plus"></i> Nuovo Agent
+  </button>
+</div>
+
+<!-- ═══ BANNER ═══ -->
+@if (showBanner) {
+  <div class="banner" [class.banner-success]="bannerType === 'success'" [class.banner-error]="bannerType === 'error'">
+    <span>{{ bannerText }}</span>
+    <button class="banner-close" (click)="closeBanner()"><i class="fas fa-times"></i></button>
+  </div>
+}
+
+<!-- ═══ LOADING ═══ -->
+@if (loading) {
+  <div class="loading-container">
+    <div class="spinner"></div>
+    <span>Caricamento agents…</span>
+  </div>
+}
+
+<!-- ═══ EMPTY STATE ═══ -->
+@if (!loading && agents.length === 0) {
+  <div class="empty-state">
+    <i class="fas fa-robot empty-icon"></i>
+    <h2>Nessun agent configurato</h2>
+    <p>Crea il tuo primo agent per automatizzare operazioni sui documenti.</p>
+    <div class="example-prompts">
+      <p class="example-title">Esempi di cosa puoi chiedere:</p>
+      @for (ex of promptExamples; track ex) {
+        <div class="example-chip" (click)="openCreate(); fillPrompt(ex)">
+          <i class="fas fa-lightbulb"></i> {{ ex }}
+        </div>
+      }
+    </div>
+    <button class="btn-primary btn-lg" (click)="openCreate()">
+      <i class="fas fa-plus"></i> Crea il primo Agent
+    </button>
+  </div>
+}
+
+<!-- ═══ AGENTS TABLE ═══ -->
+@if (!loading && agents.length > 0) {
+  <div class="table-container">
+    <table class="agents-table">
+      <thead>
+        <tr>
+          <th>Stato</th>
+          <th>Nome</th>
+          <th>Prompt</th>
+          <th>Trigger</th>
+          <th>Schedulazione</th>
+          <th>Aggiornato</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (agent of agents; track agent.id) {
+          <tr>
+            <td>
+              <label class="toggle" (click)="$event.stopPropagation()">
+                <input type="checkbox" [checked]="agent.enabled" (change)="toggleEnabled(agent)">
+                <span class="toggle-slider"></span>
+              </label>
+            </td>
+            <td class="col-name">
+              <strong>{{ agent.name }}</strong>
+            </td>
+            <td class="col-prompt">
+              <span class="prompt-preview" [title]="agent.prompt">{{ agent.prompt }}</span>
+            </td>
+            <td>
+              @if (agent.trigger_type === 'manual') {
+                <span class="tag tag-manual"><i class="fas fa-hand-pointer"></i> Manuale</span>
+              } @else {
+                <span class="tag tag-scheduled"><i class="fas fa-clock"></i> Schedulato</span>
+              }
+            </td>
+            <td>{{ describeCron(agent.cron_expression) }}</td>
+            <td class="col-date">{{ formatDate(agent.updated_at) }}</td>
+            <td class="col-actions">
+              <button class="btn-icon btn-run" [class.running]="isRunning(agent.id)" (click)="runAgent(agent)" [disabled]="isRunning(agent.id)" title="Esegui ora">
+                <i class="fas" [class.fa-play]="!isRunning(agent.id)" [class.fa-circle-notch]="isRunning(agent.id)"></i>
+              </button>
+              <button class="btn-icon btn-history" (click)="openExecutions(agent)" title="Storico esecuzioni">
+                <i class="fas fa-history"></i>
+              </button>
+              <button class="btn-icon btn-edit" (click)="openEdit(agent)" title="Modifica">
+                <i class="fas fa-pen"></i>
+              </button>
+              <button class="btn-icon btn-delete" (click)="confirmDelete(agent)" title="Elimina">
+                <i class="fas fa-trash"></i>
+              </button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+<!-- ═══ CREATE/EDIT MODAL ═══ -->
+@if (showForm) {
+  <div class="modal-overlay" (click)="closeForm()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>@if (editingAgent) { Modifica Agent } @else { Nuovo Agent }</h2>
+        <button class="modal-close" (click)="closeForm()"><i class="fas fa-times"></i></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Name -->
+        <div class="form-group">
+          <label for="agentName">Nome agent <span class="required">*</span></label>
+          <input id="agentName" type="text" [(ngModel)]="form.name" placeholder="Es. Report HR mensile">
+        </div>
+
+        <!-- Prompt -->
+        <div class="form-group">
+          <label for="agentPrompt">Istruzione (prompt) <span class="required">*</span></label>
+          <textarea id="agentPrompt" [(ngModel)]="form.prompt" rows="5"
+            placeholder="Descrivi in linguaggio naturale cosa deve fare l'agent…"></textarea>
+          <div class="prompt-suggestions">
+            <span class="suggestions-label">Esempi:</span>
+            @for (ex of promptExamples; track ex) {
+              <button class="suggestion-chip" (click)="fillPrompt(ex)">{{ ex }}</button>
+            }
+          </div>
+        </div>
+
+        <!-- Trigger type -->
+        <div class="form-group">
+          <label>Tipo di trigger</label>
+          <div class="trigger-options">
+            <label class="radio-card" [class.selected]="form.trigger_type === 'manual'">
+              <input type="radio" name="trigger" value="manual" [(ngModel)]="form.trigger_type">
+              <i class="fas fa-hand-pointer"></i>
+              <div>
+                <strong>Manuale</strong>
+                <span>Esegui su richiesta</span>
+              </div>
+            </label>
+            <label class="radio-card" [class.selected]="form.trigger_type === 'scheduled'">
+              <input type="radio" name="trigger" value="scheduled" [(ngModel)]="form.trigger_type">
+              <i class="fas fa-clock"></i>
+              <div>
+                <strong>Schedulato</strong>
+                <span>Esecuzione automatica</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Cron expression -->
+        @if (form.trigger_type === 'scheduled') {
+          <div class="form-group">
+            <label for="cronExpr">Schedulazione <span class="required">*</span></label>
+            <div class="cron-presets">
+              @for (preset of cronPresets; track preset.value) {
+                <button class="preset-chip"
+                  [class.active]="form.cron_expression === preset.value"
+                  (click)="applyCronPreset(preset.value)">
+                  {{ preset.label }}
+                </button>
+              }
+            </div>
+            <input id="cronExpr" type="text" [(ngModel)]="form.cron_expression"
+              placeholder="Espressione cron (es. 0 8 * * *)">
+            <span class="hint">Formato: minuto ora giorno mese giorno_settimana</span>
+          </div>
+        }
+
+        <!-- Enabled -->
+        <div class="form-group form-inline">
+          <label class="toggle">
+            <input type="checkbox" [(ngModel)]="form.enabled">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label">Agent attivo</span>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-outline" (click)="closeForm()">Annulla</button>
+        <button class="btn-primary" (click)="saveAgent()"
+          [disabled]="!form.name.trim() || !form.prompt.trim() || (form.trigger_type === 'scheduled' && !form.cron_expression?.trim())">
+          @if (editingAgent) { Salva modifiche } @else { Crea Agent }
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ═══ DELETE CONFIRM MODAL ═══ -->
+@if (showDeleteConfirm && deletingAgent) {
+  <div class="modal-overlay" (click)="closeDeleteConfirm()">
+    <div class="modal modal-sm" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Conferma eliminazione</h2>
+        <button class="modal-close" (click)="closeDeleteConfirm()"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <p>Sei sicuro di voler eliminare l'agent <strong>"{{ deletingAgent.name }}"</strong>?</p>
+        <p class="text-muted">Questa azione non può essere annullata.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-outline" (click)="closeDeleteConfirm()">Annulla</button>
+        <button class="btn-danger" (click)="deleteAgent()">
+          <i class="fas fa-trash"></i> Elimina
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ═══ EXECUTIONS MODAL ═══ -->
+@if (showExecutions && executionsAgent) {
+  <div class="modal-overlay" (click)="closeExecutions()">
+    <div class="modal modal-lg" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2><i class="fas fa-history"></i> Esecuzioni — {{ executionsAgent.name }}</h2>
+        <button class="modal-close" (click)="closeExecutions()"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        @if (loadingExecutions) {
+          <div class="loading-container">
+            <div class="spinner"></div>
+            <span>Caricamento…</span>
+          </div>
+        } @else if (executions.length === 0) {
+          <p class="text-muted text-center">Nessuna esecuzione registrata per questo agent.</p>
+        } @else {
+          <table class="executions-table">
+            <thead>
+              <tr>
+                <th>Stato</th>
+                <th>Avviato</th>
+                <th>Completato</th>
+                <th>Risultato</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (exec of executions; track exec.id) {
+                <tr>
+                  <td><span class="status-badge" [class]="statusClass(exec.status)">{{ statusLabel(exec.status) }}</span></td>
+                  <td>{{ formatDate(exec.started_at) }}</td>
+                  <td>{{ exec.completed_at ? formatDate(exec.completed_at) : '—' }}</td>
+                  <td class="col-result">
+                    @if (exec.status === 'failed' && exec.error) {
+                      <span class="text-error">{{ exec.error }}</span>
+                    } @else if (exec.result) {
+                      <span class="result-preview">{{ exec.result }}</span>
+                    } @else {
+                      —
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+      <div class="modal-footer">
+        <button class="btn-outline" (click)="closeExecutions()">Chiudi</button>
+      </div>
+    </div>
+  </div>
+}
